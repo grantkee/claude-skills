@@ -1,0 +1,155 @@
+# Code Review & Security Analysis Skill
+
+Use this skill when asked to review code, audit files, analyze PRs, or perform security analysis. Trigger on: "review", "audit", "analyze", "code review", "PR review", "security check", "look at this code", "check this module", "what do you think of this". Use this skill whenever the user asks you to examine code for quality, safety, or correctness — even if they don't explicitly say "review" or "audit".
+
+## Project Context
+
+This is a Rust blockchain node (telcoin-network) combining a Narwhal/Bullshark consensus layer with EVM execution via Reth. Key crates include consensus (executor, primary, worker), execution (batch-builder, batch-validator, tn-reth), networking (libp2p, state-sync), and storage. The codebase uses tokio for async, gRPC (Tonic) for internal communication, BLS signatures (blst), and Alloy/Reth for Ethereum primitives.
+
+This context matters because the review categories and severity assessments below are tuned for a system where correctness equals safety — consensus bugs can halt the network, EVM mismatches can lose funds, and concurrency bugs in async networking can corrupt state.
+
+## Process
+
+### Phase 1: Scope & Read
+
+Determine the review scope from the user's request:
+
+- **PR diff**: Run `git diff` for the relevant range. Read every changed file in full (not just the diff hunks — surrounding context catches issues the diff alone hides). Also read files that import or are imported by changed files when the change touches a public interface.
+- **Module/crate**: Read all `.rs` files in the crate. Start with `lib.rs` or `main.rs` to understand the module's public surface, then read internal modules. For large crates (20+ files), read `lib.rs` first to understand structure, then prioritize files touching consensus, state, crypto, or networking.
+- **Specific files**: Read them plus their direct dependents if the change touches public APIs.
+
+While reading, note the file path, line numbers, and any concerns across these categories:
+
+**Rust & Systems**
+- **Memory & Safety** — `unsafe` blocks without safety comments, raw pointer manipulation, transmute, missing bounds checks, buffer handling, use-after-free patterns
+- **Concurrency** — data races, deadlock potential (lock ordering), `Send`/`Sync` bound issues, missing or incorrect use of `Arc`/`Mutex`/`RwLock`, unbounded channel/queue growth, task cancellation safety (what happens when a tokio task is dropped mid-await?)
+- **Error Handling** — `unwrap()`/`expect()` on fallible operations in non-test code (these panic and crash the node), `_` catch-all in match arms that silently swallow new variants, error chains that lose context via `.map_err(|_| ...)`
+
+**Consensus & Blockchain**
+- **Determinism** — any operation whose output could vary across validators breaks consensus. Watch for: HashMap iteration order, floating point, system time, thread-dependent ordering, randomness without deterministic seeding
+- **Consensus Safety** — incorrect quorum calculations, missing signature verification on messages, accepting messages from wrong rounds/epochs, equivocation handling, certificate validation gaps
+- **State & Funds** — EVM state transitions that don't match Ethereum semantics, incorrect gas accounting, missing balance checks, storage writes without corresponding reads for validation, batch execution ordering assumptions
+- **Fork Safety** — code that behaves differently at different block heights without explicit fork-gating, upgrade paths that could split the network
+
+**General**
+- **Security** — access control bypasses, unvalidated external input (network messages, RPC params, CLI args), cryptographic misuse (nonce reuse, weak randomness, missing constant-time comparison), resource exhaustion vectors (unbounded allocations from untrusted input)
+- **Bugs** — logic errors, off-by-one, incorrect error propagation, silent failures, type confusion between similar newtypes
+- **Architecture** — layering violations (consensus code reaching into execution internals or vice versa), missing abstraction boundaries, god objects, inconsistent patterns across similar code
+- **Optimization** — unnecessary allocations in hot paths, redundant computation, runtime work that could be compile-time (`const fn`, type-level computation), inefficient data structures for the access pattern
+
+### Phase 2: Document Findings
+
+Write findings to `report.md` in the project root (or as specified by the user).
+
+Report structure:
+```
+# Code Review: [scope description]
+Date: [date]
+Scope: [what was reviewed — PR number, crate name, or file list]
+
+## Summary
+[1-2 sentences on overall assessment]
+| # | Title | Severity | Category | Status |
+|---|-------|----------|----------|--------|
+
+## Findings
+
+### [N]. [Title]
+- **Severity**: Critical / High / Medium / Low / Informational
+- **Category**: [from list above]
+- **Location**: `file_path:line_number`
+- **Description**: [what the code does vs. what it should do, and why the gap matters]
+- **Impact**: [concrete scenario — "if a validator sends X, then Y happens, resulting in Z"]
+- **Evaluation**: Pending subagent analysis
+```
+
+Severity guide — calibrated for a blockchain node:
+- **Critical** — funds at risk, consensus break/halt, remote code execution, state corruption that persists across restarts
+- **High** — denial of service against the node, privilege escalation, incorrect state transitions that are recoverable, panics in production paths that crash the node
+- **Medium** — silent failures affecting correctness that don't immediately break consensus, missing validation at system boundaries (RPC, network messages), economic impact under specific conditions
+- **Low** — suboptimal patterns, minor inefficiencies, weak diagnostics, `unwrap()` in paths that are practically safe but not provably so
+- **Informational** — style, naming, dead code, compile-time improvements, idiomatic Rust suggestions
+
+### Phase 3: Evaluate with Subagents
+
+Launch subagents to verify each finding independently. This step exists because initial review catches surface patterns, but many turn out to be false positives once you trace the full code path. Skipping verification wastes the user's time on non-issues.
+
+Group 2-3 related findings per subagent (e.g., group by file or subsystem). Each subagent investigates:
+
+1. **Re-read the source files** — the subagent reads the actual code, not a summary from Phase 2
+2. **Trace the code path** — follow callers, callees, and data flow. Determine if the concern is reachable from a real entry point (RPC handler, network message handler, consensus round)
+3. **Check for existing guards** — look for validation in callers, type-system guarantees (newtypes, enums), upstream checks, or Rust compiler guarantees (`match` exhaustiveness, borrow checker) that prevent the issue
+4. **Search for tests** — find test coverage for the behavior in question. Check both unit tests in the same file and integration/e2e tests
+5. **Determine status**:
+   - **Confirmed** — the issue is real and reachable in production
+   - **False Positive** — prevented by guards, invariants, type system, or incorrect reading of the code
+   - **Design Decision** — intentional tradeoff (document the rationale found)
+   - **Partially Valid** — the concern exists but impact is lower than initially assessed
+6. **Rate actual severity** — may differ from initial assessment after full analysis
+7. **Propose a fix** for Confirmed and Partially Valid findings, with concrete Rust code
+
+Subagent prompt template:
+```
+You are evaluating code review findings for telcoin-network, a Rust blockchain node combining Narwhal/Bullshark consensus with EVM execution via Reth.
+
+For each concern below, read the source files, trace the code path from entry points to the flagged location, and determine whether the concern is valid.
+
+Pay special attention to:
+- Rust compiler guarantees that may make the concern impossible (borrow checker, exhaustive matches, type safety)
+- Upstream validation that prevents the problematic input from reaching this code
+- Whether `debug_assert!` is the only guard (these are stripped in release builds)
+- For consensus code: whether the behavior is deterministic across all validators
+
+## Concern N: [Title]
+**Location:** [file:line]
+**Claim:** [what the initial review found]
+**Key question:** [the specific thing to verify — e.g., "Can this unwrap panic if a validator sends a malformed certificate?"]
+
+Investigate:
+1. Read [specific files — list them]
+2. [Specific questions to answer — be precise]
+3. Check for existing guards, tests, or type-level validation
+4. Determine: Confirmed / False Positive / Design Decision / Partially Valid
+
+Return:
+- **Status:** [one of the four options]
+- **Actual Severity:** [may differ from initial]
+- **Analysis:** [what you found — trace the path, cite the guards or lack thereof]
+- **Proposed Fix:** [concrete Rust code if Confirmed or Partially Valid]
+```
+
+Use `subagent_type: "Explore"` for evaluation subagents. Launch all subagent groups in parallel.
+
+### Phase 4: Update Report
+
+After all subagents return, update `report.md`:
+
+1. Update the summary table with final status and actual severity
+2. Replace "Pending subagent analysis" with the subagent's analysis
+3. For Confirmed findings, include the proposed fix with code
+4. For False Positives, explain why — this documents design decisions and prevents the same concern from being re-raised
+5. Remove findings that were proven completely invalid (don't clutter the report)
+6. Reorder remaining findings by severity (Critical first)
+
+### Phase 5: Present Results
+
+Summarize directly in the conversation:
+- Total findings vs. confirmed count
+- Table of confirmed findings with severity and one-line description
+- Call out any Critical or High findings explicitly with a brief explanation
+- Mention notable False Positives only if they reveal non-obvious design decisions worth understanding
+
+Keep this concise — the full details are in `report.md`.
+
+## Rules
+
+- Every finding goes through subagent evaluation before being presented as confirmed. Unverified findings waste time.
+- Read code before commenting on it. Speculation produces false positives.
+- Include `file_path:line_number` references for every finding.
+- Propose fixes, not just problems. A finding without a solution is half-finished work.
+- Group subagent work to keep each focused (2-3 concerns max per agent).
+- Calibrate severity honestly. A style issue is Informational, not Medium. An `unwrap()` on a `Some` that's guaranteed by the previous line is not High.
+- For state transitions and fund flows, verify complete accounting (inputs = outputs + fees).
+- Check both the Rust code layer and any contract/protocol-level validation before concluding a finding is valid.
+- `debug_assert!` is not a production guard — it compiles to nothing in release builds. If correctness depends on a `debug_assert!`, that's a real finding.
+- For consensus code: if two honest validators could produce different results from the same input, that's at minimum High severity.
