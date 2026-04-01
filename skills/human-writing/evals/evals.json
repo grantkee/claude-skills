@@ -1,0 +1,111 @@
+{
+  "skill_name": "human-writing",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Write a PR description for a branch that refactors epoch transition logic and fixes a race condition in the worker network",
+      "expected_output": "A concise PR description with a Summary section. Should use sentence case headings, no AI vocabulary (crucial, pivotal, enhance, robust, seamless), no em dash stacking, no sycophantic sign-offs, no bold-header bullet lists.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["crucial", "pivotal", "enhance", "robust", "seamless", "streamline", "leverage", "comprehensive", "multifaceted", "foster", "garner", "underscore", "showcase", "landscape", "tapestry", "testament", "interplay", "intricate", "endeavor"],
+          "description": "Output should not contain common AI vocabulary words"
+        },
+        {
+          "name": "em_dash_limit",
+          "type": "content",
+          "check": "max_occurrences",
+          "pattern": "—",
+          "max": 2,
+          "description": "At most 2 em dashes in the entire output"
+        },
+        {
+          "name": "no_signoff",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["hope this helps", "let me know", "feel free to", "happy to help", "don't hesitate"],
+          "description": "No conversational sign-offs"
+        },
+        {
+          "name": "sentence_case_headings",
+          "type": "content",
+          "check": "headings_are_sentence_case",
+          "description": "All markdown headings should use sentence case"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Write a GitHub issue about a bug where the batch builder panics on empty transaction lists",
+      "expected_output": "A focused issue with Problem and Solution sections. Plain language, specific about the panic condition, no inflated significance claims, no generic 'challenges' sections, no emoji.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["crucial", "pivotal", "enhance", "robust", "seamless", "critical bug", "catastrophic", "groundbreaking", "cutting-edge", "vital"],
+          "description": "Output should not contain AI vocabulary or inflated severity language"
+        },
+        {
+          "name": "no_emoji",
+          "type": "content",
+          "check": "no_emoji",
+          "description": "No emoji in the issue"
+        },
+        {
+          "name": "no_generic_conclusion",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["the future looks", "exciting times", "step in the right direction", "incredibly promising", "remains to be seen"],
+          "description": "No generic positive conclusions"
+        },
+        {
+          "name": "sentence_case_headings",
+          "type": "content",
+          "check": "headings_are_sentence_case",
+          "description": "All markdown headings should use sentence case"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write a brief explanation of how validator staking works in a proof-of-stake system",
+      "expected_output": "A clear, direct technical explanation. Should use 'is' instead of 'serves as', no synonym cycling for 'validator', no trailing -ing phrases, no meta-commentary like 'Here is an explanation of...'.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["crucial", "pivotal", "enhance", "robust", "multifaceted", "intricate", "interplay", "tapestry", "landscape", "foster", "embark", "delve", "navigate"],
+          "description": "Output should not contain common AI vocabulary words"
+        },
+        {
+          "name": "no_copula_avoidance",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["serves as", "stands as", "acts as a testament"],
+          "description": "Should use direct copulas instead of circumlocutions"
+        },
+        {
+          "name": "no_meta_commentary",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["here is a", "here is an", "below you will find", "in this explanation", "let's delve"],
+          "description": "No meta-commentary preceding the actual content"
+        },
+        {
+          "name": "no_signoff",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["hope this helps", "let me know", "feel free to", "happy to help"],
+          "description": "No conversational sign-offs"
+        }
+      ]
+    }
+  ]
+}

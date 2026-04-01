@@ -1,0 +1,17 @@
+{
+  "skill_name": "gh-issue",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "create a github issue for this branch",
+      "expected_output": "A markdown file with Problem and Solution sections describing the basefee-contract branch changes. Should not contain code snippets from the diff.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "draft an issue for what these changes address",
+      "expected_output": "A markdown file with Problem and Solution sections. Should be succinct and describe the motivation and approach without pasting code.",
+      "files": []
+    }
+  ]
+}
