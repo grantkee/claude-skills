@@ -5,17 +5,41 @@ description: Style guide for writing prose that sounds human, not AI-generated. 
 
 # Human writing
 
-One test governs every word you write: does this word tell the reader something they
-need to know? If it does, keep it. If it doesn't, cut it. That is the whole rule. Everything
-below is just working out the implications.
+One test governs every word you write: does this word earn its place? If it tells the
+reader something they need to know, keep it. If it's filler, cut it. But "earn its place"
+is not the same as "be short." A thorough explanation of a complex topic earns every word.
+A padded sentence full of qualifiers and throat-clearing earns none. The goal is value per
+word, not minimum words.
 
 Write top-down. Start with what matters to the reader, not with background they already
-have. Active voice. Short sentences when a short sentence will do. The reader is busy and
-competent; respect both facts.
+have. Active voice. Short sentences when a short sentence will do — but longer sentences
+when the idea needs room to breathe.
 
 Your job is to move information from your head into theirs with minimal friction. You are
-not performing intelligence or thoroughness. You are not writing a speech. You are writing
-something someone will read at their desk while twelve other tabs compete for attention.
+not performing intelligence or thoroughness. But you are also not performing brevity. Write
+at the length the topic demands. A one-sentence answer to a simple question is ideal. A
+five-paragraph explanation of a complex system is also ideal, if the reader needs those
+five paragraphs to understand it.
+
+---
+
+## 0. Depth vs. redundancy
+
+These are different problems, and confusing them ruins writing in opposite directions.
+
+**Redundancy** is saying the same thing twice in different words, padding lists to three
+items when you have two points, or adding a conclusion that restates the introduction.
+Cut it.
+
+**Depth** is explaining how something works, why a decision was made, what the tradeoffs
+are, or what happens in edge cases. Keep it — this is where writing provides value.
+
+The question is never "is this too long?" It's "does every paragraph tell the reader
+something new?" A 200-word answer can be redundant. A 2000-word answer can be lean.
+Match the length to the complexity of the topic and the needs of the reader.
+
+When you catch yourself trimming a useful explanation just to be concise, stop. When you
+catch yourself repeating a point with different adjectives, cut.
 
 ---
 
@@ -119,10 +143,11 @@ Good: "The system handles transactions and validates signatures."
 ### Stop padding to three
 
 AI text forces lists into groups of three to seem comprehensive. Use the actual number
-of items. Two items is fine. Four is fine. If you have one point, make one point.
+of items. Two items is fine. Four is fine. Seven is fine if you genuinely have seven
+things to say. If you have one point, make one point.
 
-Bad: "The protocol ensures security, reliability, and performance."
-Good (if you mean two things): "The protocol ensures security and reliability."
+Bad: "The protocol ensures security, reliability, and performance." (if you only mean two things)
+Good: "The protocol ensures security and reliability."
 
 ### Stop cycling synonyms
 
@@ -206,10 +231,13 @@ Good: (Just stop when you've made your point.)
 ### No formulaic "challenges and future" sections
 
 Don't append a "Challenges" or "Future Outlook" section unless the user asked
-for one. These sections tend to be generic and low-information.
+for one or the challenges are genuinely important to the reader's understanding.
+Generic "challenges remain" sections are low-information padding.
 
 If there are real challenges worth mentioning, weave them into the main text
-where they're relevant, with specifics.
+where they're relevant, with specifics. A paragraph on a real tradeoff the reader
+should know about is valuable. A boilerplate "scalability remains a challenge"
+closing is not.
 
 ### No false ranges
 
@@ -388,6 +416,12 @@ After:
 > slashes their deposit. This makes attacks expensive: to control consensus,
 > an attacker needs to buy and risk a large amount of the staked token.
 
+The "before" has 71 words and says almost nothing concrete. The "after" has 48 words
+and explains the mechanism, the enforcement, and the security implication. It's shorter
+because the original was redundant, not because short is inherently better. If the topic
+warranted more depth (how slashing amounts are calculated, what "offline" means in
+practice, how delegation works), that depth would belong here too.
+
 ---
 
 ## 7. Quick reference
@@ -396,6 +430,7 @@ Run through this checklist before finalizing any prose output.
 
 | Check | What to look for |
 |---|---|
+| Depth vs. redundancy | Did you cut something the reader needs? Did you repeat something they already know? |
 | AI vocabulary | Any words from the replacement table in section 1? Swap them. |
 | Copula avoidance | "serves as," "stands as," "represents"? Use "is." |
 | Trailing -ing phrases | Sentence ends with "highlighting," "ensuring," etc.? Cut or promote to own sentence. |
