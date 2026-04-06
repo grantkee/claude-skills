@@ -7,7 +7,7 @@ description: Generate two markdown files for the current branch — a focused Gi
 
 Generate two local markdown files for the current branch:
 
-1. **`issue.md`** — A focused GitHub issue describing the core problem the branch solves and the high-level approach. Narrow scope: one problem, one solution.
+1. **`issue-<name>.md`** — A focused GitHub issue describing the core problem the branch solves and the high-level approach. Narrow scope: one problem, one solution.
 2. **`comment.md`** — A comprehensive PR comment summarizing everything the branch touches. Broad scope: every meaningful change gets a mention.
 
 These serve different audiences at different moments. The issue is read before the code — it frames the "why" for maintainers and security researchers evaluating the PR. The comment is read alongside the code — it orients reviewers to the full scope of changes so nothing gets overlooked.
@@ -43,7 +43,6 @@ The issue covers only the primary problem the branch addresses — the thing the
 ## Problem
 
 [2-4 paragraphs describing the problem, need, or context. Be specific about what's wrong, missing, or needed. Include:
-
 - What the current behavior or state is
 - Why it's problematic or insufficient
 - What impact this has (on users, security, functionality, etc.)
@@ -51,10 +50,9 @@ The issue covers only the primary problem the branch addresses — the thing the
 
 ## Solution
 
-[1-3 paragraphs outlining the proposed approach at a high level. Write as a proposal — what _should_ be done, not what _was_ done. Use prescriptive framing ("introduce X", "X should expose", "X should reject") even though the solution is based on actual code changes. The issue is read before the PR, so it should sound like a recommendation for reviewers to evaluate.
+[1-3 paragraphs outlining the proposed approach at a high level. Write as a proposal — what *should* be done, not what *was* done. Use prescriptive framing ("introduce X", "X should expose", "X should reject") even though the solution is based on actual code changes. The issue is read before the PR, so it should sound like a recommendation for reviewers to evaluate.
 
 Describe:
-
 - The general strategy for addressing the problem
 - Key design decisions and why they were made
 - Which components or areas are affected
@@ -66,7 +64,7 @@ If it helps clarify the approach, include brief pseudocode — but never include
 **Issue writing guidelines:**
 
 - **Problem section**: Lead with what's wrong or missing. Be specific enough that a maintainer unfamiliar with the recent work can understand it. For security patches, describe the risk without providing exploit details — give enough for security researchers to assess the fix.
-- **Solution section**: Write as a proposal — describe what _should_ happen, not what _has_ happened. Use prescriptive language ("introduce", "should expose", "should reject") rather than past-tense or present-tense descriptions of completed work ("exposes", "is deployed", "was added"). The content should still be informed by the actual code changes — you're describing the same approach, just framed as a recommendation rather than a changelog. This matters because the issue is meant to be read _before_ the PR, as context for evaluating whether the approach is sound.
+- **Solution section**: Write as a proposal — describe what *should* happen, not what *has* happened. Use prescriptive language ("introduce", "should expose", "should reject") rather than past-tense or present-tense descriptions of completed work ("exposes", "is deployed", "was added"). The content should still be informed by the actual code changes — you're describing the same approach, just framed as a recommendation rather than a changelog. This matters because the issue is meant to be read *before* the PR, as context for evaluating whether the approach is sound.
 - **No code**: Describe the approach in plain language. Focus on "what" and "why", not "how" at a code level. Mention affected components so reviewers know where to look. Never paste actual code from the diff.
 - **Tone**: Succinct, scannable in under 2 minutes. Precise technical language. Every sentence earns its place.
 
@@ -84,15 +82,12 @@ The comment covers the full scope of the branch — every meaningful change, gro
 ## Changes
 
 ### [Group 1: e.g., "EpochGasTarget contract"]
-
 - [Bullet points describing what changed and why, at a summary level]
 
 ### [Group 2: e.g., "ConsensusRegistry improvements"]
-
 - [Bullet points]
 
 ### [Group 3: e.g., "Codebase cleanup"]
-
 - [Bullet points]
 
 [Add as many groups as needed to cover all changes. Group by logical area, not by file.]
