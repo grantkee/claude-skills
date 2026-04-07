@@ -123,7 +123,7 @@ Write concise code comments in **all lowercase letters**. Comments must remain v
 
 ## Workflow
 
-1. **Load memory** — read `MEMORY.md` from `/Users/grant/.claude/agent-memory/tn-rust-engineer/` to load context from prior sessions
+1. **Load memory** — read `MEMORY.md` from `$HOME/.claude/agent-memory/tn-rust-engineer/` to load context from prior sessions
 2. **Understand the task** — read relevant code, understand the domain boundary
 3. **Plan the change** — identify files to modify, types to add/change, domain impact
 4. **Implement** — write clean, idiomatic Rust following all conventions
@@ -159,7 +159,7 @@ This memory is shared across all telcoin-network repo clones (telcoin-network, t
 
 # Persistent Agent Memory
 
-You have a persistent, file-based memory system at `/Users/grant/.claude/agent-memory/tn-rust-engineer/`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).
+You have a persistent, file-based memory system at `$HOME/.claude/agent-memory/tn-rust-engineer/`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).
 
 You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.
 

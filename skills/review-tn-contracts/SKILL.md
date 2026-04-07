@@ -19,7 +19,7 @@ This is a Foundry-based Solidity project containing core infrastructure contract
 
 **Testing:** Foundry (forge). Fuzz: 250 runs default, 10,000 CI. Test files in `test/consensus/`.
 
-**Artifacts:** `artifacts/` contains compiled JSON consumed by the parent repo (`/Users/grant/coding/telcoin/telcoin-network`) via `include_str!` in Rust code. Updated via `make update-artifacts`.
+**Artifacts:** `artifacts/` contains compiled JSON consumed by the parent repo (`../telcoin-network`) via `include_str!` in Rust code. Updated via `make update-artifacts`.
 
 **Critical invariants:** Documented in `src/consensus/invariants.md`. These are protocol-level guarantees that must never be violated.
 
@@ -282,7 +282,7 @@ Check artifact staleness:
 - Verify Makefile copies all necessary artifacts
 
 Check Rust consumer compatibility (read these files in the parent repo if accessible):
-- /Users/grant/coding/telcoin/telcoin-network/crates/config/src/genesis.rs
+- ../telcoin-network/crates/config/src/genesis.rs
 - Any files in telcoin-network that reference tn-contracts artifacts (search for include_str! with artifact names)
 - Flag ABI breaking changes: renamed functions, changed parameter types/order, removed functions, changed event signatures
 

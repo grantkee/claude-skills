@@ -115,6 +115,7 @@ Skip memory when the agent:
 
 Memory scope options:
 - `project` — memory is stored in the project directory (`.claude/agent-memory/{agent-name}/`), shared via version control. Best for codebase-specific knowledge.
+- `user` — memory is stored at `$HOME/.claude/agent-memory/{agent-name}/`, persists across all projects for a given user. Best for cross-project knowledge, user preferences, and agents that operate across multiple repos.
 
 ### Should It Be One Agent or Multiple?
 
@@ -305,7 +306,7 @@ memory: [project or omit]
 
 Use the Write tool to create the agent file at the determined location. If memory is enabled:
 1. Read `references/memory-template.md`
-2. Replace `{{memory-directory-path}}` with the actual path (e.g., `/Users/grant/coding/project/.claude/agent-memory/{agent-name}/`)
+2. Replace `{{memory-directory-path}}` with the actual path (e.g., `$HOME/.claude/agent-memory/{agent-name}/` for user-scope, or `.claude/agent-memory/{agent-name}/` for project-scope)
 3. Replace `{{memory-scope}}` with "project"
 4. Append the memory update prompt and the processed template to the agent body
 

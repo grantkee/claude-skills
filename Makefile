@@ -2,6 +2,7 @@ SKILLS_LOCAL := $(HOME)/.claude/skills
 SKILLS_REPO  := skills
 AGENTS_LOCAL := $(HOME)/.claude/agents
 AGENTS_REPO  := agents
+AGENT_MEMORY := $(HOME)/.claude/agent-memory
 CLAUDE_LOCAL := $(HOME)/.claude/CLAUDE.md
 CLAUDE_REPO  := CLAUDE.md
 
@@ -28,6 +29,10 @@ install: ## Install repo skills, agents, and config to local (additive)
 	mkdir -p $(AGENTS_LOCAL)
 	rsync $(RSYNC_FLAGS) $(AGENTS_REPO)/ $(AGENTS_LOCAL)/
 	cp $(CLAUDE_REPO) $(CLAUDE_LOCAL)
+	@for agent in $(AGENTS_REPO)/*.md; do \
+		name=$$(basename "$$agent" .md); \
+		mkdir -p "$(AGENT_MEMORY)/$$name"; \
+	done
 
 clean-install: ## Mirror repo to local for all components (deletes extras) — prompts for confirmation
 	@echo "This will DELETE any local skills/agents not in the repo and overwrite CLAUDE.md."
@@ -36,6 +41,10 @@ clean-install: ## Mirror repo to local for all components (deletes extras) — p
 	mkdir -p $(AGENTS_LOCAL)
 	rsync $(RSYNC_FLAGS) --delete $(AGENTS_REPO)/ $(AGENTS_LOCAL)/
 	cp $(CLAUDE_REPO) $(CLAUDE_LOCAL)
+	@for agent in $(AGENTS_REPO)/*.md; do \
+		name=$$(basename "$$agent" .md); \
+		mkdir -p "$(AGENT_MEMORY)/$$name"; \
+	done
 
 import-skill: ## Import a single skill (SKILL=name)
 	@[ -n "$(SKILL)" ] || { echo "Usage: make import-skill SKILL=name"; exit 1; }
