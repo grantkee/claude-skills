@@ -8,9 +8,9 @@ description: Generate two markdown files for the current branch — a focused Gi
 Generate two local markdown files for the current branch:
 
 1. **`issue.md`** — A focused GitHub issue describing the core problem the branch solves and the high-level approach. Narrow scope: one problem, one solution.
-2. **`comment.md`** — A comprehensive PR comment summarizing everything the branch touches. Broad scope: every meaningful change gets a mention.
+2. **`comment.md`** — A concise PR comment: 1–3 sentences on what changed and why.
 
-These serve different audiences at different moments. The issue is read before the code — it frames the "why" for maintainers and security researchers evaluating the PR. The comment is read alongside the code — it orients reviewers to the full scope of changes so nothing gets overlooked.
+These serve different audiences at different moments. The issue is read before the code — it frames the "why" for maintainers and security researchers evaluating the PR. The comment is read alongside the diff — it gives reviewers a quick summary of what changed and why, not a file-by-file inventory.
 
 ## Process
 
@@ -72,39 +72,30 @@ If it helps clarify the approach, include brief pseudocode — but never include
 
 ### Step 4: Write the PR comment file (`comment.md`)
 
-The comment covers the full scope of the branch — every meaningful change, grouped logically. This is what a reviewer reads to orient themselves before (or while) reading the diff. It should help them understand what to expect and where to focus attention.
+The comment is a short summary a reviewer reads before or alongside the diff. Keep it tight — the diff speaks for itself.
 
 ```markdown
-# [Branch name or descriptive title]
+# [Concise title]
 
-## Overview
+[1–3 sentences: what changed and why.]
 
-[1-2 sentences summarizing the branch's purpose and scope.]
-
-## Changes
-
-### [Group 1: e.g., "EpochGasTarget contract"]
-
-- [Bullet points describing what changed and why, at a summary level]
-
-### [Group 2: e.g., "ConsensusRegistry improvements"]
-
-- [Bullet points]
-
-### [Group 3: e.g., "Codebase cleanup"]
-
-- [Bullet points]
-
-[Add as many groups as needed to cover all changes. Group by logical area, not by file.]
+[Optional: link related issues, EIPs, or include benchmark numbers for perf changes.]
 ```
 
-**Comment writing guidelines:**
+**Do:**
 
-- **Comprehensive**: mention every meaningful change — new files, modified contracts, removed code, test additions, deployment changes. A reviewer should not be surprised by anything in the diff after reading this.
-- **Grouped by area**: organize changes by logical component or theme, not file-by-file. A reviewer reading this should build a mental map of what the branch touches.
-- **Brief per item**: each bullet should be 1-2 sentences. Enough to understand what changed and why, not a full explanation.
-- **No code**: same rule as the issue — describe changes in words. The diff is right there.
-- **Call out removals**: deleted code and removed features deserve explicit mention so reviewers know the absence is intentional.
+- Write 1–3 sentences summarizing the change
+- Explain why if the diff doesn't make it obvious
+- Link related issues or EIPs
+- Include benchmark numbers for perf changes
+
+**Don't:**
+
+- List every file changed — that's what the diff is for
+- Repeat the title in the body
+- Add "Files changed" or "Changes" sections
+- Write walls of text that go stale when the diff is updated
+- Use filler like "This PR introduces...", "comprehensive", "robust", "enhance", "leverage"
 
 ### Step 5: Save the files
 
