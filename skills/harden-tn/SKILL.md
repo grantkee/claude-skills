@@ -1,0 +1,347 @@
+---
+name: harden-tn
+description: |
+  Perform automated security hardening sweeps on the telcoin-network codebase.
+  Trigger on: "harden", "security check", "determinism check", "find unwrap", "production ready", "audit prep", "hardening sweep", "panic audit", "tracing audit", "blocking audit", "review"
+---
+
+# Security Hardening Advisor
+
+Automated security hardening sweeps for telcoin-network. Identifies non-determinism, panic vectors, missing observability, and async-blocking hazards across the codebase, then produces a prioritized remediation plan with concrete fixes.
+
+## Project Context
+
+telcoin-network is a Rust blockchain node combining Narwhal/Bullshark DAG-based BFT consensus with EVM execution via Reth. The codebase lives under `crates/` with these key subsystems:
+
+- **Consensus** (`crates/consensus/primary`, `crates/consensus/worker`, `crates/consensus/executor`) -- DAG construction, certificate management, Bullshark leader election, batch fetching, commit ordering. This is the most security-critical path: any divergence between honest validators breaks the network.
+- **Execution** (`crates/engine`, `crates/tn-reth`, `crates/batch-builder`, `crates/batch-validator`, `crates/execution`) -- EVM block building and validation via Reth integration. State transitions must be deterministic and match across all validators.
+- **Networking** (`crates/network-libp2p`, `crates/network-types`, `crates/state-sync`) -- libp2p gossip, request/response, peer management, Kademlia DHT. Handles untrusted input from the network.
+- **Storage** (`crates/storage`) -- consensus chain persistence, certificate stores, archive packs. Uses redb and custom FxHasher-based indexes (storage hash maps are safe -- they use deterministic FxHasher, not RandomState).
+- **Types & Config** (`crates/types`, `crates/config`) -- shared types, BLS crypto, committee definitions, genesis configuration.
+- **Node Orchestration** (`crates/node`) -- lifecycle management, epoch transitions, engine coordination.
+
+Key architectural facts that affect classification:
+
+- `BTreeMap` is already used for round-indexed DAG state (`Dag = BTreeMap<Round, HashMap<...>>`) and certificate ordering, but inner maps within rounds use `HashMap`.
+- `FxHashMap`/`FxHashSet` in `crates/storage/src/archive/fxhasher.rs` use a deterministic hasher -- these are safe for consensus.
+- The codebase uses `parking_lot` locks alongside `tokio::sync` locks. Standard `Mutex::lock()` from `parking_lot` blocks the thread, which is fine on dedicated threads but hazardous inside async tasks on the tokio runtime.
+- `SystemTime` appears in `crates/types/src/primary/mod.rs` for timestamps and in `crates/network-libp2p/src/kad.rs` for DHT record expiry.
+- `tokio::sync::mpsc::unbounded_channel` is used in the certificate fetcher and certifier -- potential memory exhaustion under load.
+- `spawn_blocking` is used in some paths (engine, cert_validator, crypto signing) but not consistently for all sync-heavy operations.
+- `#[instrument]` tracing coverage exists (19 occurrences across 11 files) but is sparse relative to the ~243 async functions in non-test code.
+
+## Process
+
+### Phase 1: Determine Audit Scope
+
+Parse the user's request to identify which audit(s) to run:
+
+| User says                                                | Audit type              |
+| -------------------------------------------------------- | ----------------------- |
+| "determinism check", "HashMap audit", "consensus safety" | Determinism audit       |
+| "find unwrap", "panic audit", "crash safety"             | Panic audit             |
+| "tracing audit", "observability", "instrument coverage"  | Tracing audit           |
+| "blocking audit", "async safety", "tokio blocking"       | Blocking-in-async audit |
+| "harden", "full sweep", "audit prep", "production ready" | Full sweep (all 4)      |
+
+If the user specifies a crate or directory, scope the search to that path. Otherwise, scan the entire `crates/` tree excluding test files.
+
+### Phase 2: Run Scans
+
+Execute the appropriate searches using Grep/Glob. For each audit type, search non-test Rust files (exclude paths matching `*test*`, `*bench*`, `test_utils`). Collect results with file paths and line numbers.
+
+**Scan commands by audit type:**
+
+- **Determinism**: Search for `HashMap`, `HashSet`, `rand`, `SystemTime`, `thread_rng`, `Instant::now` in non-test code. Also search for `.iter()` on `HashMap`/`HashSet` results being collected or compared.
+- **Panic**: Search for `.unwrap()`, `.expect(`, `panic!`, `unreachable!`, `todo!`, `unimplemented!` in non-test code. Also search for `debug_assert` (stripped in release builds).
+- **Tracing**: Search for `async fn` in non-test code, then check which lack a preceding `#[instrument`. Focus on functions in consensus, networking, and execution paths.
+- **Blocking**: Search for `std::fs::`, `std::io::Read`, `std::io::Write`, `std::thread::sleep`, `.lock()`, `.read()`, `.write()` (parking_lot), `std::net::` in async contexts. Cross-reference with `async fn` definitions.
+
+Run scan searches in parallel using subagents when doing a full sweep -- one subagent per audit type.
+
+### Phase 3: Classify Findings
+
+For each finding, determine whether it is safe or unsafe using the Classification Guide below. Group findings into:
+
+- **Unsafe / Needs Fix** -- the pattern is reachable in production and poses a real risk
+- **Safe / Acceptable** -- the pattern is guarded by invariants, type safety, or is in a non-critical path
+- **Needs Investigation** -- cannot determine safety without deeper trace analysis
+
+Launch subagents to investigate "Needs Investigation" findings. Each subagent reads the source file, traces callers, and determines reachability from untrusted input.
+
+### Phase 4: Generate Remediation Plan
+
+For each unsafe finding, produce:
+
+- **Location**: `crate/path/file.rs:line_number`
+- **Category**: Which audit found it
+- **Risk**: What can go wrong (concrete scenario)
+- **Fix**: Specific code change (e.g., "Replace `HashMap` with `BTreeMap`", "Replace `.unwrap()` with `.map_err(|e| ConsensusError::...)?`", "Add `#[instrument(skip_all, fields(round))]`")
+- **Priority**: Critical / High / Medium / Low
+
+### Phase 5: Prioritize
+
+Order all findings by priority. Priority is determined by reachability from untrusted input and blast radius:
+
+| Priority     | Criteria                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Consensus divergence, state corruption, or node crash reachable from network messages                         |
+| **High**     | Non-determinism in execution paths, panics reachable from untrusted input, blocking that can stall consensus  |
+| **Medium**   | Non-determinism in non-consensus paths, panics behind validation layers, missing tracing on critical handlers |
+| **Low**      | Style issues, missing tracing on internal helpers, safe unwraps that should still use `expect` with context   |
+
+## Audit Types
+
+### 1. Determinism Audit
+
+**Goal**: Find data structures and operations whose output order can vary between validators, breaking consensus.
+
+**What to search for:**
+
+- `HashMap` and `HashSet` from `std::collections` (uses `RandomState` -- iteration order varies per process)
+- `SystemTime::now()` in consensus or execution paths
+- `thread_rng()` or `rand::random()` without deterministic seeding
+- `Instant::now()` used for ordering decisions (not just timeouts)
+- Floating-point arithmetic in consensus calculations
+- `par_iter()` or parallel iteration where result ordering matters
+
+**Classification criteria:**
+
+Mark as **SAFE** when:
+
+- The HashMap/HashSet is used only for lookup/membership, never iterated in a way that affects output ordering
+- The HashMap/HashSet is collected into a `BTreeMap`/`BTreeSet`/sorted `Vec` before being used
+- The data structure is local to a single request and never persisted or compared across validators
+- It lives in `crates/storage/src/archive/` using `FxHasher` (deterministic hasher)
+- `SystemTime` is used only for logging, metrics, or DHT record expiry (not consensus decisions)
+
+Mark as **UNSAFE** when:
+
+- A `HashMap`/`HashSet` is iterated and the iteration order flows into: certificate construction, batch ordering, DAG traversal results, committed sub-dag contents, leader election, reputation scoring
+- `SystemTime::now()` feeds into a value that must agree across validators
+- The inner `HashMap` in the DAG type (`BTreeMap<Round, HashMap<AuthorityIdentifier, ...>>`) is iterated to produce ordered output (the outer BTreeMap is safe, but iterating the inner HashMap for digest collection is not)
+
+Mark as **NEEDS INVESTIGATION** when:
+
+- HashMap is used in `state_sync`, `cert_manager`, or `batch_fetcher` where ordering might flow into consensus
+- A HashSet of digests is iterated to build a request -- ordering may affect which peer responds first, cascading into timing-dependent behavior
+
+### 2. Panic Audit
+
+**Goal**: Find `.unwrap()`, `.expect()`, `panic!`, and other panic vectors that could crash the node from untrusted input.
+
+**What to search for:**
+
+- `.unwrap()` and `.expect(` on `Option` and `Result`
+- `panic!()`, `todo!()`, `unimplemented!()`, `unreachable!()`
+- `debug_assert!` guarding invariants that production code depends on (these are no-ops in release builds)
+- Array/slice indexing without bounds checks (`array[i]` vs `array.get(i)`)
+- Integer arithmetic that could overflow (checked vs unchecked in release mode)
+
+**Classification criteria:**
+
+Mark as **SAFE** when:
+
+- The unwrap is on a value that was just checked (e.g., `if option.is_some() { option.unwrap() }` -- though `.expect` or `if let` is still preferred)
+- The unwrap is on a constant or compile-time-known value (e.g., regex compilation, channel creation)
+- The unwrap is inside an `impl` that is only called during initialization with validated config
+- The `expect` message clearly documents why it cannot fail
+- `unreachable!()` is in a match arm that the type system guarantees cannot be reached
+
+Mark as **UNSAFE** when:
+
+- The unwrap is on data derived from network messages, RPC input, or peer responses
+- The unwrap is on a database read (storage can be corrupted)
+- The unwrap is on channel send/recv (channels can be closed during shutdown)
+- `debug_assert!` is the only guard for an invariant that later code depends on -- in release builds, the assertion is gone but the dependent code still runs
+- `todo!()` or `unimplemented!()` exists in any non-test code path
+
+Mark as **NEEDS INVESTIGATION** when:
+
+- The unwrap is on a collection lookup (`.get().unwrap()`) where the key was inserted earlier in the same function -- need to verify no concurrent modification
+- The unwrap is deep in a call chain and it is unclear whether callers validate input
+
+### 3. Tracing Audit
+
+**Goal**: Identify functions handling network messages or consensus state transitions that lack `#[instrument]` tracing, making production debugging difficult.
+
+**What to search for:**
+
+- `async fn` definitions in these paths that lack `#[instrument]`:
+  - `crates/consensus/primary/src/` (excluding tests)
+  - `crates/consensus/worker/src/`
+  - `crates/consensus/executor/src/`
+  - `crates/network-libp2p/src/`
+  - `crates/state-sync/src/`
+  - `crates/node/src/`
+  - `crates/engine/src/`
+- Focus on functions whose names contain: `handle`, `process`, `receive`, `send`, `fetch`, `validate`, `execute`, `commit`, `propose`, `certify`, `sync`
+
+**Classification criteria:**
+
+Mark as **NEEDS INSTRUMENT** when:
+
+- The function handles inbound network messages (request handlers, gossip processors)
+- The function drives a consensus state transition (propose, certify, commit, order)
+- The function performs state sync or certificate fetching
+- The function manages epoch transitions
+
+Mark as **LOW PRIORITY** when:
+
+- The function is a small utility or accessor
+- The function is already wrapped by an instrumented caller
+- The function has manual `tracing::debug!`/`tracing::info!` spans that cover the same information
+
+**Recommended instrument pattern:**
+
+```rust
+#[instrument(skip_all, fields(round = %header.round(), authority = %header.author()))]
+```
+
+Always `skip_all` to avoid serializing large structures. Add key fields (round, authority, digest, epoch) as explicit fields.
+
+### 4. Blocking-in-Async Audit
+
+**Goal**: Find synchronous operations inside async functions that block the tokio runtime thread, potentially stalling consensus.
+
+**What to search for:**
+
+- `std::fs::` operations (file I/O) inside async functions
+- `std::thread::sleep` inside async functions (should be `tokio::time::sleep`)
+- `parking_lot::Mutex::lock()` / `parking_lot::RwLock::read()` / `parking_lot::RwLock::write()` inside async functions -- these block the OS thread
+- `std::sync::Mutex::lock()` inside async functions
+- Database operations (redb reads/writes) inside async functions without `spawn_blocking`
+- DNS resolution via `std::net::ToSocketAddrs` in async context
+- CPU-intensive computation (signature verification, hashing) in async functions without `spawn_blocking`
+
+**Classification criteria:**
+
+Mark as **UNSAFE** when:
+
+- A `parking_lot` lock is held across an `.await` point (can block the runtime thread while waiting for the lock, AND the lock holder might be waiting on the same runtime thread -- deadlock)
+- `std::fs::` operations happen inside an async function on the consensus hot path
+- `std::thread::sleep` appears in any async function
+- A sync mutex guards data that is contended by multiple async tasks
+
+Mark as **SAFE** when:
+
+- The lock is acquired and released within a single synchronous block (no `.await` while held) AND contention is low
+- The blocking operation is wrapped in `tokio::task::spawn_blocking`
+- The blocking operation is in initialization code that runs before the async runtime starts
+- `parking_lot` locks are used for quick, uncontended access (e.g., reading a cached value)
+
+Mark as **NEEDS INVESTIGATION** when:
+
+- A lock is acquired in an async function but it is unclear whether an `.await` occurs while held
+- Database reads happen in async handlers but may be fast enough to not matter in practice
+
+## Classification Guide
+
+For every finding, apply this decision tree:
+
+```
+1. Is the code in a test file, bench file, or test_utils module?
+   YES -> Skip (not production code)
+   NO  -> Continue
+
+2. Is the code reachable from untrusted input? (network message, RPC call, peer response)
+   YES -> Higher severity. Continue to step 3.
+   NO  -> Is it reachable from any external input? (CLI args, config files, database reads)
+          YES -> Medium severity baseline. Continue to step 3.
+          NO  -> Low severity baseline. Continue to step 3.
+
+3. Is there an existing guard?
+   - Type system guarantee (enum match, newtype validation, borrow checker) -> Likely safe
+   - Upstream validation in the caller -> Check that ALL callers validate
+   - debug_assert! only -> NOT a guard in release builds. Treat as unguarded.
+   - Comment saying "this is safe because..." -> Verify the claim, don't trust it
+
+4. What is the blast radius?
+   - Consensus divergence (validators disagree) -> Critical
+   - Node crash (panic in production) -> High if reachable from untrusted input
+   - Silent incorrect behavior -> Medium to High depending on what breaks
+   - Performance degradation -> Medium if it can stall consensus, Low otherwise
+   - Diagnostic gap (missing tracing) -> Low to Medium
+```
+
+## Output Format
+
+Structure the remediation report as follows:
+
+````markdown
+# Hardening Report: [audit type or "Full Sweep"]
+
+Date: [date]
+Scope: [crates scanned, file count, exclusions]
+
+## Executive Summary
+
+- [N] total findings across [M] files
+- [x] Critical, [Y] High, [Z] Medium, [W] Low
+- Top remediation priorities: [1-3 bullet points]
+
+## Findings by Priority
+
+### Critical
+
+#### [C1] [Title]
+
+- **Location**: `crate/path/file.rs:line`
+- **Category**: Determinism | Panic | Tracing | Blocking
+- **Risk**: [Concrete scenario]
+- **Current code**:
+  ```rust
+  // the problematic pattern
+  ```
+````
+
+- **Recommended fix**:
+  ```rust
+  // the corrected pattern
+  ```
+
+### High
+
+[same format]
+
+### Medium
+
+[same format]
+
+### Low
+
+[same format]
+
+## Safe Patterns (No Action Needed)
+
+[Brief list of findings that were classified as safe, with one-line rationale for each. This documents the analysis so the same patterns are not re-flagged.]
+
+## Metrics
+
+- HashMap/HashSet in non-test code: [count] occurrences, [n] unsafe
+- unwrap()/expect() in non-test code: [count] occurrences, [n] unsafe
+- async fn without #[instrument]: [count] of [total]
+- Blocking calls in async: [count] occurrences, [n] unsafe
+
+```
+
+Write this report to `report.md` in the project root (or as specified by the user).
+
+## Rules
+
+- Always exclude test files, bench files, and `test_utils` modules from findings. Scan non-test code only.
+- Use subagents for parallel scanning during full sweeps. One subagent per audit type keeps each focused and fast.
+- Use subagents for classification of "Needs Investigation" findings. Each subagent traces the full code path from entry point to finding.
+- Every finding must include a `file:line` location. No vague references.
+- Every unsafe finding must include a concrete fix with replacement code. Identifying problems without solutions is incomplete work.
+- Do not flag `FxHashMap`/`FxHashSet` in `crates/storage/src/archive/` as non-deterministic. These use a deterministic hasher by design.
+- Do not flag `HashMap`/`HashSet` used purely for lookup (`.get()`, `.contains()`, `.insert()`) without iteration as non-deterministic.
+- Do not flag `unwrap()` in code that just created the `Some`/`Ok` value on the previous line unless there is a concurrent modification risk.
+- `debug_assert!` is not a production guard. If production correctness depends on a `debug_assert!`, classify the finding as if the assert does not exist.
+- For the Dag type (`BTreeMap<Round, HashMap<...>>`), the outer `BTreeMap` is deterministic but the inner `HashMap` per-round is not. Any iteration of the inner map that feeds into consensus output is a finding.
+- When proposing HashMap-to-BTreeMap replacements, verify the key type implements `Ord`. `AuthorityIdentifier` and `CertificateDigest` implement `Ord` in this codebase.
+- When proposing unwrap removals, match the crate's existing error handling pattern. Check whether the function returns `Result` or uses `eyre`/`anyhow` before choosing the replacement.
+- For tracing additions, always recommend `skip_all` with explicit key fields to avoid serializing large structs into spans.
+- Calibrate honestly. A HashMap used as a local cache in a helper function is not the same severity as a HashMap driving commit ordering. Do not inflate findings.
+- Present the summary table directly in conversation. Full details go in the report file.
+```

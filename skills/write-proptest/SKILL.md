@@ -1,0 +1,321 @@
+---
+name: write-proptest
+description: |
+  Generate property-based tests using proptest for the telcoin-network codebase.
+  Trigger on: "write proptest", "property test", "invariant test", "fuzz this", "test properties"
+---
+
+# Property-Based Test Generator
+
+Generate property-based tests for the telcoin-network repository -- a Rust blockchain node combining Narwhal/Bullshark DAG-based BFT consensus with EVM execution via Reth. Property tests target invariants that must hold across all inputs: conservation laws, BFT thresholds, determinism, monotonicity, serialization roundtrips, and commutativity.
+
+## Project Context
+
+The telcoin-network repo uses `proptest 1.5.0` (workspace dependency) with a project-wide `proptest.toml` at the repo root that sets `cases = 64` and `max_shrink_iters = 100` for fast local iteration. CI can override via `PROPTEST_CASES=256`.
+
+Property tests live in `*_props.rs` files inside integration test directories (`tests/it/`), registered as modules in each crate's `tests/it/main.rs`. Existing prop test files cover:
+
+- **BFT committee invariants** -- quorum > 2/3, validity > 1/3, Byzantine fault tolerance (`crates/types/tests/it/committee_props.rs`)
+- **Consensus leader determinism** -- same round yields same leader, round-robin coverage, cycle correctness (`crates/consensus/primary/tests/it/consensus_props.rs`)
+- **Economic invariants** -- gas penalty bounds, monotonicity, threshold behavior (`crates/tn-reth/tests/it/economics_props.rs`)
+- **ERC-20 precompile** -- transfer conservation, allowance semantics, mint/burn supply accounting, calldata validation, EIP-2612 permit (`crates/tn-reth/tests/it/tel_precompile_props.rs`)
+- **Faucet precompile** -- direct mint credits, role grant/revoke, unauthorized access (`crates/tn-reth/tests/it/tel_precompile_faucet_props.rs`)
+- **Pipeline integration** -- full tx lifecycle through signing, encoding, block building, EVM dispatch, state persistence (`crates/tn-reth/tests/it/pipeline_tel_precompile_props.rs`, `crates/tn-reth/tests/it/pipeline_tel_faucet_props.rs`)
+
+## Process
+
+### Phase 1: Identify invariants in the target module
+
+Read the target module's source code and identify properties that must hold for all valid inputs:
+
+- What quantities are conserved? (balances, total supply, vote counts)
+- What thresholds must never be violated? (quorum, validity, gas limits)
+- What must be deterministic? (leader selection, hash computation, serialization)
+- What must be monotonic? (rounds, epochs, nonces, sequence numbers)
+- What must roundtrip faithfully? (serialize then deserialize)
+- What must be order-independent? (commutative operations, set membership)
+
+Look for code that iterates over `HashMap` or `HashSet` (non-deterministic iteration order) -- these are high-value proptest targets because bugs only manifest with certain orderings.
+
+### Phase 2: Design property tests
+
+For each identified invariant, design a property test:
+
+1. Define the input strategy (ranges, generators, constraints via `prop_assume!`)
+2. State the property as a boolean predicate over outputs
+3. Choose assertion macro: `prop_assert!`, `prop_assert_eq!`, `prop_assert_ne!`
+4. Consider edge cases the strategy should cover (zero, max, boundary values)
+
+Group related properties into separate `proptest!` blocks with section comments.
+
+### Phase 3: Generate the proptest code
+
+Write the `*_props.rs` file following the conventions documented below. Use existing test infrastructure rather than building custom scaffolding.
+
+### Phase 4: Verify the test compiles and runs
+
+1. Run `cargo test -p <crate> --test it -- <test_name>` to verify compilation and execution
+2. Add the appropriate feature flags if needed (e.g., `--features test-utils` or `--features faucet`)
+3. Confirm the new module is registered in the crate's `tests/it/main.rs`
+4. Run with `PROPTEST_CASES=256` at least once to increase confidence
+
+## Invariant Categories
+
+### Serialization Roundtrips
+
+Encode then decode must produce the original value. The codebase uses BCS (`encode`/`decode` from `tn_types`) and byte conversions (`.into()` for `Certificate`, `Header`).
+
+```rust
+fn prop_roundtrip(seed in any::<u64>()) {
+    let original = create_value(seed);
+    let bytes = encode(&original);
+    let recovered: T = decode(&bytes);
+    prop_assert_eq!(original, recovered);
+}
+```
+
+### BFT Threshold Invariants
+
+Committee quorum and validity thresholds must satisfy mathematical bounds for Byzantine fault tolerance:
+
+- `quorum_threshold >= 2n/3 + 1` (two quorums always intersect)
+- `validity_threshold >= ceil(n/3)` (at least one honest node witnessed)
+- `quorum_threshold > validity_threshold`
+- `n - f >= quorum_threshold` where `f = floor((n-1)/3)`
+
+### Conservation Laws
+
+Total quantities must be preserved across operations:
+
+- ERC-20 transfers: `sender_before + recipient_before == sender_after + recipient_after`
+- Mint/burn: `supply_after == supply_before +/- amount`
+- Vote counting: total votes cast equals sum of individual votes
+
+### Determinism
+
+Same input must always produce same output, critical for consensus:
+
+- Leader selection: `schedule.leader(round)` called multiple times returns same result
+- Hash computation: same data always produces same digest
+- Serialization: same struct always produces same bytes
+
+### Monotonicity
+
+Certain values must only increase:
+
+- Consensus rounds never decrease
+- Epoch numbers never decrease
+- EIP-2612 permit nonces strictly increase
+- Gas penalties increase as usage decreases (inverse monotonicity)
+
+### Commutativity
+
+Operations that should be order-independent:
+
+- Certificate verification does not depend on insertion order
+- Batch processing produces same result regardless of transaction order (where applicable)
+- Committee construction from different orderings of the same authority set
+
+## Conventions
+
+### File naming and placement
+
+- Property test files are named `<subject>_props.rs`
+- They live in `crates/<crate>/tests/it/` alongside other integration tests
+- Register the module in `crates/<crate>/tests/it/main.rs`:
+  ```rust
+  mod my_new_props;
+  ```
+- Feature-gated modules use `#[cfg(feature = "...")]` in `main.rs` (see `tn-reth` for the `faucet` feature pattern)
+
+### Module documentation
+
+Every props file starts with a module doc comment explaining what invariants are tested:
+
+```rust
+//! Property-based tests for <subject> invariants.
+//!
+//! These tests verify critical <domain> properties:
+//! - <Property 1>
+//! - <Property 2>
+//! - <Property 3>
+```
+
+### Imports
+
+Always use `proptest::prelude::*` as the primary import. Common imports by domain:
+
+```rust
+// All prop test files
+use proptest::prelude::*;
+
+// Committee/consensus tests
+use tn_test_utils_committee::CommitteeFixture;
+use tn_storage::mem_db::MemDatabase;
+use tn_types::{Committee, AuthorityIdentifier, ReputationScores};
+
+// Precompile tests (unit-level via TestEnv)
+use tn_reth::test_utils::precompile_test_utils::{
+    assert_success, assert_not_success, decode_bool, decode_u256,
+    extract_output_bytes, TestEnv, GENESIS_SUPPLY, RECIPIENT, USER,
+};
+
+// Pipeline tests (full block execution)
+use super::pipeline_helpers::*;
+use tn_reth::test_utils::TransactionFactory;
+
+// Serialization tests
+use tn_types::{encode, decode};
+
+// Solidity call encoding
+use alloy::sol_types::SolCall;
+```
+
+### Test infrastructure
+
+Use the existing test utilities -- do not build custom scaffolding:
+
+| Utility | Location | Purpose |
+|---|---|---|
+| `CommitteeFixture` | `crates/test-utils-committee/src/committee.rs` | Build test committees with configurable size; provides `committee()`, `header_from_last_authority()`, `certificate()`, `authorities()` |
+| `MemDatabase` | `crates/storage/src/mem_db.rs` | In-memory database for tests, used as `CommitteeFixture::builder(MemDatabase::default)` |
+| `TestEnv` | `crates/tn-reth/src/evm/tel_precompile/test_utils.rs` | Unit-level precompile testing; `exec_default()`, `get_balance()`, `get_allowance()`, `get_total_supply()`, `mint()`, `set_timestamp()` |
+| `TransactionFactory` | `crates/tn-reth/src/test_utils.rs` | Generate signed transactions for pipeline tests |
+| `PipelineTestEnv` | `crates/tn-reth/tests/it/pipeline_helpers.rs` | Full block execution pipeline; `execute_block()`, `tx_succeeded()`, `get_balance()`, `get_precompile_balance()` |
+
+### proptest! block structure
+
+```rust
+proptest! {
+    /// Doc comment explaining the property being tested.
+    #[test]
+    fn prop_<property_name>(
+        param1 in <strategy1>,
+        param2 in <strategy2>
+    ) {
+        // Setup
+        // Exercise
+        // Assert with prop_assert!, prop_assert_eq!, prop_assert_ne!
+    }
+}
+```
+
+For expensive tests (pipeline tests that build full blocks), reduce cases:
+
+```rust
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+    // ...
+}
+```
+
+### Companion deterministic tests
+
+Every `*_props.rs` file includes non-proptest `#[test]` functions that verify specific known values. These serve as documentation and fast regression checks alongside the randomized property tests:
+
+```rust
+/// Non-proptest: verify specific known values.
+#[test]
+fn test_specific_known_case() {
+    // Verify exact values for a known configuration
+}
+```
+
+### Helper functions
+
+Define helper functions above the `proptest!` blocks for setup logic (creating committees, environments, etc.). Keep them deterministic by accepting a seed parameter:
+
+```rust
+fn create_test_committee(seed: u64, size: usize) -> Committee {
+    let mut rng = StdRng::seed_from_u64(seed);
+    // ...
+}
+```
+
+## Rules
+
+1. **Never modify production code to support tests.** Use existing `test-utils` features and `#[cfg(test)]` utilities. If needed functionality is not exposed, note it as a gap rather than adding public API surface.
+
+2. **Never use `HashMap` iteration order in assertions.** Property tests that depend on iteration order will be flaky. Use `BTreeMap`/`BTreeSet` or sort before comparing.
+
+3. **Always use `prop_assert!` macros inside `proptest!` blocks**, not `assert!`. The `prop_assert!` variants integrate with proptest's shrinking to produce minimal failing cases.
+
+4. **Keep strategies bounded.** Do not use `any::<u64>()` for sizes or counts -- use constrained ranges like `4usize..50` for committee sizes. Unbounded strategies produce slow tests and meaningless edge cases.
+
+5. **Committee sizes must be >= 4** for BFT properties (minimum 3f+1 where f=1).
+
+6. **Use `prop_assume!` sparingly.** Prefer strategies that generate only valid inputs over filtering with `prop_assume!`. Excessive filtering wastes test budget.
+
+7. **Pipeline tests must use `ProptestConfig::with_cases(10)`** or similar low count. Each case builds and executes a full block, which is expensive.
+
+8. **Feature-gate faucet tests with `#[cfg(feature = "faucet")]`** in `main.rs`. The precompile has two modes: production (no faucet) and testnet (with faucet).
+
+9. **Do not duplicate test infrastructure.** Use `TestEnv` for unit-level precompile tests, `PipelineTestEnv` for full pipeline tests, `CommitteeFixture` for consensus tests. Do not recreate what already exists.
+
+10. **Include the module in `tests/it/main.rs`.** A `*_props.rs` file that is not registered as a module will never be compiled or run.
+
+11. **Respect `proptest.toml` defaults.** Do not hardcode `ProptestConfig::with_cases(64)` -- the repo-root `proptest.toml` already sets this. Only override when you need fewer cases (expensive tests) or more cases (critical invariants).
+
+12. **Each property test function tests exactly one property.** Do not combine multiple unrelated assertions in a single proptest function. Multiple properties in one function makes shrinking produce confusing minimal cases.
+
+## Examples
+
+### BFT Committee Invariants
+
+File: `crates/types/tests/it/committee_props.rs`
+
+This file demonstrates the pattern for testing mathematical invariants of the committee structure. Key patterns:
+
+- Helper function `create_test_committee(seed, size)` using seeded RNG for determinism
+- Properties parameterized by `seed in any::<u64>()` and `size in 4usize..50`
+- Clear doc comments stating the mathematical property being verified
+- Companion `#[test]` functions verifying exact thresholds for known committee sizes (n=4,7,10,13)
+- Assertions include formatted messages with all relevant values for debugging
+
+### Consensus Leader Determinism
+
+File: `crates/consensus/primary/tests/it/consensus_props.rs`
+
+This file demonstrates testing consensus-layer determinism. Key patterns:
+
+- Uses `CommitteeFixture::builder(MemDatabase::default).committee_size(...).build()` for setup
+- Strategy `(1u32..100).prop_map(|r| r * 2)` to generate only even rounds (leader rounds in Bullshark)
+- Tests both positive properties (determinism, coverage) and negative properties (no consecutive repeat)
+- `LeaderSwapTable` determinism tested with identical inputs producing identical outputs
+- Companion `#[test]` verifying specific swap behavior with crafted reputation scores
+
+### ERC-20 Precompile Conservation
+
+File: `crates/tn-reth/tests/it/tel_precompile_props.rs`
+
+This file demonstrates testing EVM precompile invariants. Key patterns:
+
+- Uses `TestEnv::new()` for lightweight precompile-level testing (no full block execution)
+- Properties grouped by section with comment headers: transfers, approve/transferFrom, mint/claim/burn, calldata validation, EIP-2612 permit
+- Conservation law: `sender_before - amount == sender_after` and `recipient_before + amount == recipient_after`
+- Supply invariant: `supply_after == supply_before + minted_amount`
+- Negative properties: over-balance transfer fails, expired permit fails, unauthorized mint fails
+- `known_selectors()` helper for calldata validation tests
+
+### Gas Penalty Economics
+
+File: `crates/tn-reth/tests/it/economics_props.rs`
+
+This file demonstrates testing economic mechanism properties. Key patterns:
+
+- Bound invariant: `penalty <= unused_gas` (never charge more than wasted)
+- Threshold invariant: penalty is 0 when usage >= 10%
+- Monotonicity: lower usage produces higher or equal penalty
+- Boundary behavior: near-zero usage produces high penalty (>= 90% of unused)
+- Companion tests for exact boundary conditions and quadratic scaling verification
+
+### Full Pipeline Tests
+
+File: `crates/tn-reth/tests/it/pipeline_tel_precompile_props.rs`
+
+This file demonstrates testing through the complete execution pipeline. Key patterns:
+
+- `ProptestConfig::with_cases(10)` because each test builds and executes a real block
+- Uses `PipelineTestEnv::new()` from `pipeline_helpers` module
+- Tests that gas is consumed: `user_before - user_after >= amount` (not exact due to gas)
+- Feature-gated: `#[cfg(not(feature = "faucet"))]` in `main.rs`
