@@ -25,6 +25,8 @@ This is a Foundry-based Solidity project containing core infrastructure contract
 
 This context matters because these contracts govern validator lifecycle, consensus committee selection, and fund custody. A bug here can halt the network, corrupt consensus state, or lose staked funds.
 
+Note: This skill targets the tn-contracts repo (not telcoin-network). If a `.claude/project-context.md` exists in the tn-contracts repo root, read it for additional architecture context. Otherwise, the inline context above is self-contained.
+
 ## Process
 
 ### Phase 1: Scope & Read
