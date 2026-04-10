@@ -68,6 +68,7 @@ Location: file_path:line_number
 Claim: [standalone factual assertion — what is wrong]
 Key Question: [the specific thing a verifier must answer]
 Relevant Files: [files needed to verify]
+Source: [agent name, e.g., "consensus-safety", "state-transitions"]
 ```
 
 **Critical**: The `Claim` field contains ONLY the factual assertion (e.g. "function X does not validate input Y"), never the reasoning chain that led to it. This preserves independence for Phase 4 verifiers.
@@ -81,131 +82,31 @@ Assign each finding a verification tier:
 | **Tier 3** | LOW | Batched 3-5 per agent |
 | **Skip** | INFO | No verification — observations, not vulnerability claims |
 
-### Phase 4: Independent Verification
+### Phase 4: Verify and Present
 
-Spawn verification agents in parallel. Each agent receives ONLY the claim, the relevant code, and the key question — never the original agent's reasoning. This eliminates confirmation bias.
+After extracting all structured findings in Phase 3, invoke the `findings-verifier` agent via the Agent tool to independently verify each finding, produce remediation, and present the final report.
 
-**Verification agent prompt template:**
+Pass to the agent:
+1. All extracted findings in canonical schema (from Phase 3)
+2. The evaluation scope context (PR number, branch, or file list)
+3. The full content of all changed files
 
-```
-You are verifying a security claim. You have NOT seen the original analysis.
-Answer the Key Question below using ONLY the code provided.
+The `findings-verifier` agent handles:
+- Independent subagent verification (anti-confirmation bias — verifiers receive only the claim and key question, never the original agent's reasoning)
+- Tiered verification (CRITICAL/HIGH individually, MEDIUM batched 2-3, LOW batched 3-5, INFO skipped)
+- Root-cause remediation with decision tree (clear fix → code, multiple approaches → options, architectural → flag for human)
+- Checking for similar patterns elsewhere in the codebase
+- Updating the report with verification results and proposed fixes
+- Presenting confirmed findings with verification stats
 
-Claim: [factual assertion from Phase 3]
-Key Question: [what must be answered]
-Relevant Files: [attached code]
-
-Provide:
-- Verdict: CONFIRMED / FALSE_POSITIVE / PARTIALLY_VALID / DESIGN_DECISION
-- Confidence: HIGH / MEDIUM / LOW
-- Verified Severity: CRITICAL / HIGH / MEDIUM / LOW
-- Evidence: specific code citations, traced paths, guards found or absent
-```
-
-**Re-verification rule**: If a CRITICAL or HIGH finding receives a MEDIUM-confidence verdict, spawn one additional verifier for that finding. This is the only case where re-verification occurs.
-
-**Agent caps**:
-- Max 12 verification agents total
-- If findings exceed capacity, prioritize Tier 1 and Tier 2
-- Tier 3 findings that exceed capacity go to the "Not Verified" report section
-
-### Phase 5: Root-Cause Remediation
-
-For each CONFIRMED or PARTIALLY_VALID finding, spawn a remediation agent that focuses on root cause, not symptoms.
-
-**Decision tree for output format:**
-
-1. **One clear fix** (no API changes, no architectural decisions, no trade-offs) → Provide specific before/after code
-2. **Multiple valid approaches** (different trade-offs in performance, complexity, API breakage) → List ALL options with pros/cons/effort, recommend one, flag for human review
-3. **Architectural decision required** (protocol changes, new abstractions, fork-gated behavior) → List options, do NOT recommend one, explicitly state "requires human decision"
-
-**Remediation agents also check for:**
-- Similar patterns elsewhere in the codebase (same root cause in other locations)
-- Collateral effects (test breakage, determinism impact, serialization changes)
-- Upgrade requirements (rolling vs coordinated validator upgrade)
-
-**Agent caps**:
-- Max 8 remediation agents total
-- CRITICAL and HIGH findings get individual agents
-- MEDIUM findings batched 2-3 per agent
-- LOW findings get a one-line suggestion from the orchestrator (no dedicated agent)
-
-### Phase 6: Present Results
-
-Present the unified report using this template:
-
-```
-# Security Evaluation Report
-
-## Executive Summary
-- **Overall Risk**: CRITICAL / HIGH / MEDIUM / LOW / CLEAN
-- **Agents Run**: 8/8
-- **Initial Findings**: N
-- **After Verification**: M confirmed, P false positives eliminated
-- **Remediation Status**: X with clear fixes, Y requiring human decision
-- **Recommendation**: BLOCK / APPROVE_WITH_FIXES / APPROVE
-
-## Verified Findings — Clear Remediation
-[Confirmed findings with specific before/after code fixes ready to apply]
-[Each includes: finding ID, severity, location, claim, verdict, confidence, fix]
-
-## Verified Findings — Requires Human Decision
-[Confirmed findings with multiple options or architectural trade-offs]
-[Each includes: finding ID, severity, location, claim, options with pros/cons]
-
-## Partially Valid Findings
-[Concerns that exist but at lower impact than initially assessed]
-[Each includes: finding ID, adjusted severity, explanation of reduced scope]
-
-## Eliminated False Positives
-| Finding ID | Original Severity | Claim | Why Dismissed |
-|------------|------------------|-------|---------------|
-[Summary table — transparency on what was ruled out and why]
-
-## Not Verified
-[Tier 3 findings that exceeded verification capacity — listed with original severity]
-
-## Raw Agent Reports
-
-### consensus-safety
-[Full agent report]
-
-### state-transitions
-[Full agent report]
-
-### crypto-correctness
-[Full agent report]
-
-### dos-vectors
-[Full agent report]
-
-### determinism-verifier
-[Full agent report]
-
-### contract-safety
-[Full agent report]
-
-### dependency-auditor
-[Full agent report]
-
-### nemesis-auditor
-[Full agent report]
-
-## Methodology Notes
-- All 8 agents ran independently with no shared state
-- Each agent used its designated skills for domain-specific analysis
-- Severity calibrated for blockchain: consensus breaks and fund loss are CRITICAL
-- Verification agents received claims WITHOUT original reasoning (independence guarantee)
-- Verification stats: N findings → M verified, P false positives (P/N = X% false positive rate)
-- Re-verification triggered for: [list any CRITICAL/HIGH findings with MEDIUM-confidence verdicts]
-```
+Do not present findings to the user before `findings-verifier` completes. Unverified findings waste time.
 
 ## Expected Agent Counts
 
 | Phase | Agents | Notes |
 |-------|--------|-------|
 | 2 | 8 | Fixed — one per security domain |
-| 4 | 6-12 | Depends on finding count and tiers |
+| 4 (via findings-verifier) | 6-12 | Verification agents, depends on finding count and tiers |
 | 4 (re-verify) | 0-3 | Low-confidence CRITICAL/HIGH verdicts only |
-| 5 | 3-8 | Confirmed findings only |
+| 4 (remediation) | 3-8 | Confirmed findings only |
 | **Total** | **17-31** | Typical ~22 |
