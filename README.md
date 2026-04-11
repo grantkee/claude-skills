@@ -131,6 +131,7 @@ These agents run in parallel during a `/security-eval` pass. Each covers a speci
 - `solidity-invariant-auditor`: Extracts business logic from Solidity contracts and formalizes into mathematical invariant properties with Foundry test implementations.
 - `solidity-gas-architect`: Analyzes Solidity contracts for gas optimization opportunities, generates refactored diffs with estimated savings, then spawns the scrutineer to validate safety.
 - `solidity-change-scrutineer`: Validates proposed Solidity refactoring changes for storage layout safety, permission drift, shadowing, complexity spikes, and compiler version issues.
+- `solidity-nemesis`: Adversarial exploit hypothesis agent that constructs profitable multi-step attack paths from an attacker's perspective. Chains vulnerabilities into quantified exploit hypotheses with economics and risk tables. Spawns invariant-auditor for formal property extraction, then identifies which invariants an attacker can profitably violate.
 
 ## Directory structure
 
