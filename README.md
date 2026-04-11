@@ -120,6 +120,10 @@ These agents run in parallel during a `/security-eval` pass. Each covers a speci
 - `contract-safety`: Solidity access control, reentrancy, stake accounting, reward distribution.
 - `dependency-auditor`: New crate introductions, CVEs, feature flag changes, supply chain risk.
 
+### Solidity Analysis
+
+- `solidity-sentinel`: Exhaustive Solidity static analysis combining manual expert review, aderyn, and slither. Three independent tracks each verify findings before consolidation into a single report.
+
 ## Directory structure
 
 ```

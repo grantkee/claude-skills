@@ -83,8 +83,9 @@ If you're about to do something an agent is designed for, spawn the agent instea
 1. **Spawn `project-context` agent FIRST** — before designing the plan, before any other agents
 2. Wait for project-context to return (or confirm context is fresh)
 3. Design the plan with full architecture context
-4. **Spawn `task-decomposer` agent** — decompose before presenting to user
-5. Present the decomposed plan for user approval
+4. Ask me to confirm design decisions when considering more than one option
+5. **Spawn `task-decomposer` agent** — decompose before presenting to user
+6. Present the decomposed plan for user approval
 
 If you skip step 1, the plan will lack architecture context and downstream agents will waste time re-exploring the codebase.
 
@@ -118,13 +119,7 @@ Do NOT attempt to debug manually — always route through `debug-orchestrator` f
 
 ## Security Evaluation
 
-Run `/security-eval` before merging any PR that touches:
-- Consensus logic (`crates/consensus/`)
-- State transitions (`crates/engine/`, `crates/storage/`)
-- Cryptographic operations
-- Network message handling (`crates/network-libp2p/`)
-- Smart contracts (`tn-contracts/`)
-- Dependencies (`Cargo.toml`, `Cargo.lock`)
+Run `/security-eval` when reviewing code.
 
 The security-eval skill spawns 10 parallel agents:
 1. `consensus-safety` — BFT assumptions, quorum logic
