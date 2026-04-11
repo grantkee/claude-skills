@@ -129,6 +129,8 @@ These agents run in parallel during a `/security-eval` pass. Each covers a speci
 
 - `solidity-sentinel`: Exhaustive Solidity static analysis combining manual expert review, aderyn, and slither. Three independent tracks each verify findings before consolidation into a single report.
 - `solidity-invariant-auditor`: Extracts business logic from Solidity contracts and formalizes into mathematical invariant properties with Foundry test implementations.
+- `solidity-gas-architect`: Analyzes Solidity contracts for gas optimization opportunities, generates refactored diffs with estimated savings, then spawns the scrutineer to validate safety.
+- `solidity-change-scrutineer`: Validates proposed Solidity refactoring changes for storage layout safety, permission drift, shadowing, complexity spikes, and compiler version issues.
 
 ## Directory structure
 
