@@ -1,5 +1,5 @@
 ---
-name: tn-nemesis-scan
+name: nemesis-scan
 description: "Deep combined audit using iterative Feynman + State Inconsistency analysis across 8 phases with specialized agents. Language-agnostic. Spawns nemesis-orchestrator which coordinates recon, mapping, interrogation, state checking, feedback loop, journey tracing, verification, and reporting. Triggers on /nemesis-scan or deep combined audit."
 ---
 
@@ -30,7 +30,7 @@ Agent({
 
 Target: [target files/directories]
 
-References are at: [absolute path to skills/tn-nemesis-scan/references/]
+References are at: [absolute path to skills/nemesis-scan/references/]
 
 Execute all 8 phases in order:
 - Phase 0+1 (parallel): nemesis-recon + nemesis-mapper

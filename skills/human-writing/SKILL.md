@@ -446,3 +446,12 @@ Run through this checklist before finalizing any prose output.
 | Padding to three | Forced three-item list? Use the natural number. |
 | Hedging stack | Multiple qualifiers? Commit to one level of uncertainty. |
 | Conversational artifacts | Sign-offs, disclaimers, "let me know"? Delete. |
+
+---
+
+## 8. Post-processing
+
+After writing or editing prose in a file, spawn the `format-output` agent with the
+file path(s) you wrote to. The agent applies file-specific formatting rules (such as
+sentence-per-line layout in README files) that depend on the output context rather
+than writing style.
