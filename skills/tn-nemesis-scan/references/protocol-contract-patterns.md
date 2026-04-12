@@ -161,3 +161,131 @@ These exploit the gap between Rust state changes and Solidity state changes at e
 - **Empty RewardInfo array** — If no blocks produced, does all issuance roll to undistributed? Is this recoverable?
 - **Duplicate validator in RewardInfo** — Does applyIncentives check for uniqueness? Double-counting inflates rewards
 - **Committee with validator who exited between shuffle and conclude** — Shuffle reads Active validators, but beginExit() could have been called in a block between shuffle and conclude
+
+## Region-Aware Committee Shuffle
+
+The committee shuffle uses geographic region diversity to distribute validators across the committee. Implemented in `crates/tn-reth/src/evm/block.rs` (`region_aware_shuffle`).
+
+### Algorithm
+```
+1. Separate active validators into region buckets (region 1-8) and unassigned (region 0)
+2. If no regions assigned → fallback to plain Fisher-Yates shuffle (deterministic via BLS sig hash seed)
+3. Otherwise:
+   a. Fisher-Yates shuffle WITHIN each region bucket (intra-region randomization)
+   b. Round-robin SELECT across regions (inter-region distribution)
+   c. Append any unassigned validators at the end
+4. Truncate to nextCommitteeSize
+```
+
+### Coupled State
+| Rust State | Solidity State | Coupling Invariant | Breaking Operation |
+|-----------|---------------|-------------------|-------------------|
+| Shuffle seed (BLS signature hash of `close_epoch` value) | N/A (computed deterministically) | All validators derive identical seed | Non-deterministic seed derivation |
+| `ValidatorInfo.region` read via `getValidators(Active)` | `ValidatorInfo.region` set via `setValidatorRegion()` | Region assignment stable during shuffle | Governance calls `setValidatorRegion()` mid-epoch |
+| `nextCommitteeSize` read during shuffle | `nextCommitteeSize` set via `setNextCommitteeSize()` | Size stable between shuffle and concludeEpoch | Governance changes size between shuffle and conclude |
+
+### Adversarial Sequences
+- **setValidatorRegion() between shuffle and concludeEpoch** — Rust read region data, then governance changes it. Solidity `concludeEpoch()` may validate against different region assignments than the shuffle used
+- **All validators in one region** — Round-robin degenerates to sequential pick from single bucket. No geographic diversity but algorithm must still produce valid committee
+- **Region assignment to 0 (unassigned) for all** — Forces fallback to plain Fisher-Yates. Verify fallback path produces identical results to non-region-aware shuffle
+- **nextCommitteeSize > active validator count** — Validation is `newSize <= eligible.length` in Solidity, but what if validators exit between the size check and the shuffle?
+
+### Audit Checklist
+- [ ] Shuffle seed derivation is identical across all validators (deterministic from `close_epoch` block hash)
+- [ ] Fallback path (no regions) produces same result as if all validators were in a single region
+- [ ] Round-robin doesn't skip or double-count regions when bucket sizes are uneven
+- [ ] Unassigned (region 0) validators are handled consistently — appended after region-diverse selection
+- [ ] `nextCommitteeSize` truncation doesn't break the region distribution guarantee
+
+## Slashing System
+
+Slashing is executed via `applySlashes(Slash[])` as a system call during epoch boundary processing. Defined in `ConsensusRegistry.sol`.
+
+### Execution Chain
+```
+applySlashes(Slash[] calldata slashes)  [onlySystemCall]
+  └─ For each slash:
+     └─ _consensusBurn(operator, slashAmount)
+        ├─ _exit(operator)       — force transition to Exited status
+        ├─ _retire(operator)     — set isRetired=true (permanent exclusion)
+        ├─ _unstake(operator)    — return remaining stake minus slashAmount
+        └─ confiscate slashAmount to Issuance contract balance
+```
+
+### CRITICAL ORDERING INVARIANT
+`applySlashes()` MUST execute BEFORE `concludeEpoch()` in the epoch boundary sequence. The full order is:
+1. `applyIncentives()` — distribute rewards
+2. `applySlashes()` — slash and burn
+3. `concludeEpoch()` — rotate committee
+
+If slashes execute after concludeEpoch:
+- Slashed validator may already be in the new committee
+- `_exit()` would need to remove from a committee that's already been finalized
+
+### Coupled State
+| State A | State B (coupled) | Coupling Invariant | Breaking Operation |
+|---------|-------------------|-------------------|-------------------|
+| `balances[validator]` (post-reward) | `Issuance.balance` (confiscated funds) | Sum of all balances + Issuance.balance == total minted | Slash amount exceeds validator balance (underflow?) |
+| Validator status (Active) | Committee membership | Slashed validator must be removed from current + future committees | _exit() doesn't clean future committee slots |
+| `isRetired` flag | Re-activation path | Retired validators cannot re-enter via stake() + activate() | Missing retirement check in activation path |
+
+### Adversarial Sequences
+- **applySlashes + applyIncentives in wrong order** — Validator gets rewards THEN slashed. Net effect: they keep partial rewards. Correct order: rewards first, then slash (so slash can confiscate the reward too)
+- **Slash amount > validator balance** — Does _consensusBurn handle underflow? Saturating subtraction or revert?
+- **Slash a PendingActivation validator** — They haven't served yet. _exit() from PendingActivation status — is this a valid transition?
+- **Double slash same validator in one epoch** — Second _consensusBurn on already-Exited validator. Does _exit() revert or no-op?
+- **Slash during concludeEpoch re-entrancy** — _consensusBurn calls _unstake which transfers ETH. Re-entrancy guard needed?
+
+### Audit Checklist
+- [ ] `applySlashes` ordering enforced: after `applyIncentives`, before `concludeEpoch`
+- [ ] `_consensusBurn` handles edge case where slashAmount >= validator's full balance
+- [ ] Slashed validator is removed from all future committee arrays (not just current epoch)
+- [ ] `isRetired` flag is checked in `activate()` to prevent re-entry
+- [ ] No re-entrancy risk in _unstake ETH transfer within _consensusBurn
+- [ ] Slash[] array cannot contain duplicate operators (or duplicates are handled safely)
+
+## Dynamic Committee Sizing
+
+Governance can adjust committee size via `setNextCommitteeSize(uint16)` on ConsensusRegistry.
+
+### Mechanics
+```
+setNextCommitteeSize(uint16 newSize)  [onlyRole(GOVERNANCE_ROLE)]
+  └─ Validation: newSize <= eligible validators count
+  └─ Stored as nextCommitteeSize, takes effect at next concludeEpoch
+```
+
+### Risk Scenarios
+- **Committee shrink mid-epoch** — Active validators who were in the committee may be excluded at next rotation. They don't get PendingExit status — they're simply not selected
+- **Committee shrink below quorum** — If `nextCommitteeSize < 3f + 1` for the desired fault tolerance, consensus cannot make progress
+- **Size change between shuffle and conclude** — Shuffle reads `nextCommitteeSize`, but governance could change it before `concludeEpoch()` validates the committee
+- **Size increase beyond active validators** — Validation prevents this at `setNextCommitteeSize` time, but validators could exit between the governance call and the next epoch
+
+### Audit Checklist
+- [ ] `nextCommitteeSize` is read exactly once during shuffle and not re-read during conclude
+- [ ] Minimum committee size is enforced (prevents consensus-breaking small committees)
+- [ ] Size validation accounts for validators that may exit before the size takes effect
+- [ ] Committee produced by shuffle matches exactly `nextCommitteeSize` (no off-by-one)
+
+## Epoch Boundary Atomicity
+
+The epoch boundary must execute as an atomic unit. Implemented in `block.rs` via `merge_transitions(BundleRetention::Reverts)`.
+
+### Mechanism
+```
+apply_consensus_block_rewards()     → BundleState (reward transitions)
+  merge into evm_state via merge_transitions(BundleRetention::Reverts)
+apply_slashes()                     → BundleState (slash transitions)  
+  merge into evm_state via merge_transitions(BundleRetention::Reverts)
+shuffle_new_committee()             → Pure computation (no state change)
+apply_closing_epoch_contract_call() → BundleState (conclude transitions)
+  merge into evm_state via merge_transitions(BundleRetention::Reverts)
+```
+
+`BundleRetention::Reverts` keeps revert information so the entire epoch boundary can be rolled back if any step fails.
+
+### Audit Checklist
+- [ ] All three system calls (incentives, slashes, conclude) use `BundleRetention::Reverts`
+- [ ] If any system call reverts, the entire epoch boundary is rolled back (not partially applied)
+- [ ] The shuffle computation between slashes and conclude doesn't read stale state from pre-slash
+- [ ] Gas metering doesn't cause an out-of-gas revert in system calls (system calls should be gas-exempt or have sufficient gas)

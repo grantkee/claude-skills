@@ -221,3 +221,121 @@ The `ConsensusBus` uses tokio `watch` channels to broadcast state updates. Watch
 - [ ] No consumer depends on seeing every intermediate value (use `QueChannel` for that)
 - [ ] `committed_round_updates` is sent AFTER the commit is fully processed (not before)
 - [ ] `QueChannel` for `committed_certificates` and `consensus_output` doesn't drop entries under load
+
+## Subscriber Mode Transitions
+
+The `Subscriber` component in `crates/consensus/executor/src/subscriber.rs` manages transitions between consensus participation modes:
+
+```
+CVV (Committee Voting Validator)
+  │ ← Active consensus participation, produces headers, votes
+  │
+  ├─ Not in committee / epoch boundary trigger
+  │
+  v
+NVV (Non-Voting Validator)
+  │ ← Catch-up mode, processes committed certificates without voting
+  │
+  ├─ Falls behind committed round threshold
+  │
+  v
+Observer
+  │ ← Follow-only mode, subscribes to output channel
+  │
+  └─ Re-sync complete → back to NVV or CVV
+```
+
+### Coupled State
+| State A | State B (coupled) | Coupling Invariant | Breaking Operation |
+|---------|-------------------|-------------------|-------------------|
+| `NodeMode` (CVV/NVV/Observer) | `consensus_output` channel consumer | Output source matches mode: CVV produces locally, NVV/Observer consumes from channel | Mode transition without switching output source |
+| Subscriber committed round | Storage committed round | Subscriber doesn't skip epochs during mode transition | Mode change during epoch boundary processing |
+| `ConsensusBus.node_mode` watch | Actual subscriber state | Watch reflects current mode for downstream consumers | Mode changes but watch not updated |
+
+### Adversarial Sequences
+- **CVV → NVV transition during epoch boundary** — If a validator transitions to NVV mid-epoch-close, partially processed epoch state could be inconsistent
+- **NVV → CVV transition with stale state** — Validator re-enters consensus with outdated DAG. Must fully sync before participating
+- **Observer → NVV with certificate gap** — Observer was following via output channel. Switching to NVV requires filling certificate gaps from peers. Missing certificates could stall sync
+- **Rapid mode oscillation** — Repeated CVV↔NVV transitions if the validator is on the committee boundary. Each transition must cleanly drain/restart consensus state
+
+### Output Finality Coordination
+The subscriber coordinates between two output paths:
+1. **Storage path:** Certificates committed to persistent storage
+2. **Consensus output channel:** Committed certificates forwarded to execution
+
+**Invariant:** Every certificate written to storage must eventually appear on the consensus output channel. A mode transition must not create a gap where storage has certificates that were never sent to execution.
+
+### Audit Checklist
+- [ ] Mode transitions drain in-flight certificates before switching output source
+- [ ] No epoch is skipped during any mode transition sequence
+- [ ] `node_mode` watch channel is updated atomically with the actual mode change
+- [ ] CVV → NVV transition preserves the last committed round (no regression)
+- [ ] Observer mode doesn't accumulate unbounded state while following
+
+## Batch Builder and Validator Patterns
+
+### Batch Builder (`crates/batch-builder/`)
+The batch builder constructs transaction batches from the mempool for inclusion in consensus proposals.
+
+**Key concerns:**
+- **Transaction ordering within batches** — Ordering affects MEV extraction. Must be deterministic or policy-driven
+- **Epoch-specific constraints** — Batches must respect epoch boundaries (e.g., system transactions only in epoch-closing blocks)
+- **Worker-specific batches** — Each consensus worker builds independent batches. Cross-worker ordering is determined by DAG structure, not batch builder
+
+### Batch Validator (`crates/batch-validator/`)
+Validates batches received from peers before including them in the DAG.
+
+**Coupled State:**
+| State A | State B (coupled) | Coupling Invariant | Breaking Operation |
+|---------|-------------------|-------------------|-------------------|
+| Batch content (transactions) | Worker identity | Batch was built by the claimed worker | Forged worker identity in batch header |
+| Batch epoch | Current consensus epoch | Batch is valid for the current epoch only | Stale-epoch batch accepted after epoch transition |
+| Transaction validity | Chain state at batch time | Transactions were valid when batched | State changed between batch creation and execution |
+
+### Audit Checklist
+- [ ] Batch builder doesn't create batches spanning epoch boundaries
+- [ ] Batch validation rejects batches from previous epochs
+- [ ] Transaction ordering within a batch is deterministic across all validators
+- [ ] Worker identity in batch header is cryptographically verified (not just asserted)
+- [ ] Batch size is bounded to prevent DoS via oversized batches
+
+## Storage Persistence Patterns
+
+### Certificate Archival (`crates/storage/`)
+Committed certificates are persisted for crash recovery and state sync.
+
+**Key concerns:**
+
+**Garbage Collection Interaction:**
+```
+Storage contains: certificates for rounds [gc_round - gc_depth ... latest_round]
+GC deletes: certificates for rounds <= gc_round
+Recovery reads: certificates from storage to rebuild DAG
+```
+
+If GC runs aggressively, recovery after a crash may find gaps in the certificate chain.
+
+**Archive Indexing:**
+- Certificates indexed by round and by authority
+- Index must be consistent with actual stored certificates
+- Race condition: certificate written but index not yet updated (crash between the two operations)
+
+### Coupled State
+| State A | State B (coupled) | Coupling Invariant | Breaking Operation |
+|---------|-------------------|-------------------|-------------------|
+| Certificate store (persisted) | DAG (in-memory) | DAG is a consistent subset of persisted certificates | Persist fails silently, DAG has entry with no backing store |
+| Certificate store | GC round marker | No stored certificate has round <= gc_round | GC deletes certificate but marker not updated (or vice versa) |
+| Archive index (round→certs) | Actual certificate data | Every index entry points to a valid certificate | Index written before certificate (crash = dangling index) |
+| Storage committed round | Subscriber committed round | Storage is at least as fresh as subscriber's view | Subscriber advances but storage write fails |
+
+### Recovery Patterns
+- **Gap detection:** `construct_dag_from_cert_store()` rebuilds DAG from storage. Must handle gaps where GC deleted intermediate rounds
+- **Partial write recovery:** If a certificate persist was interrupted (crash mid-write), the storage must detect and skip corrupt entries
+- **Epoch boundary in storage:** Certificates from different epochs have different committees. Recovery must validate certificates against the correct epoch's committee
+
+### Audit Checklist
+- [ ] Certificate persist and index update are atomic (or ordered: certificate first, then index)
+- [ ] GC does not delete certificates that pending sync requests reference
+- [ ] Recovery path handles gaps gracefully (doesn't panic on missing parents)
+- [ ] Storage writes are durable before the certificate is reported as committed
+- [ ] Archive queries handle the race between write and index update

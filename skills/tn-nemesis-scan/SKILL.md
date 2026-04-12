@@ -90,8 +90,8 @@ Then execute all 8 phases in order, with all agents reading .audit/domain-patter
 - Phase 7: nemesis-reporter
 
 Additionally, load bundled domain references based on the target scope:
-- If target includes epoch boundaries, system calls, validator lifecycle, ConsensusRegistry, or StakeManager → also read references/protocol-contract-patterns.md
-- If target includes consensus state, DAG, certificates, aggregators, state sync, or network/peer management → also read references/consensus-dag-patterns.md
+- If target includes epoch boundaries, system calls, validator lifecycle, ConsensusRegistry, StakeManager, region, shuffle, geographic, diversity, slash, applySlashes, burn, confiscate, committee size, or setNextCommitteeSize → also read references/protocol-contract-patterns.md
+- If target includes consensus state, DAG, certificates, aggregators, state sync, network/peer management, batch, builder, pool, transaction ordering, subscriber, finality, CVV, NVV, observer, storage, persistence, archive, recovery, peer score, Kademlia, or reputation → also read references/consensus-dag-patterns.md
 
 Write phase outputs to .audit/nemesis-scan/
 Write final reports to .audit/findings/nemesis-scan-verified.md and .audit/findings/nemesis-scan-raw.md
