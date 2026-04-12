@@ -1,0 +1,134 @@
+{
+  "skill_name": "doc-writer",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Run the doc-writer editing pipeline (--edit-only) on this PR description:\n\n## Summary\nThis PR introduces **crucial** improvements to the epoch transition logic, **enhancing** the overall reliability and robustness of the system. Additionally, it addresses a **pivotal** race condition in the worker network -- ensuring seamless operation during high-throughput scenarios -- while also streamlining the codebase for better maintainability.\n\nI hope this helps reviewers understand the changes! Let me know if you have any questions.",
+      "expected_output": "A concise PR description with no AI vocabulary, minimal em dashes, no sign-offs, sentence case headings, no bold-header bullets. Technical meaning preserved.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["crucial", "pivotal", "enhance", "robust", "seamless", "streamline", "leverage", "comprehensive", "multifaceted", "foster", "garner", "underscore", "showcase", "landscape", "tapestry", "testament", "interplay", "intricate", "endeavor"],
+          "description": "Wave 1 should have removed all AI vocabulary"
+        },
+        {
+          "name": "em_dash_limit",
+          "type": "content",
+          "check": "max_occurrences",
+          "pattern": "\u2014",
+          "max": 1,
+          "description": "Wave 4 should limit em dashes to at most 1 per paragraph"
+        },
+        {
+          "name": "no_signoff",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["hope this helps", "let me know", "feel free to", "happy to help", "don't hesitate"],
+          "description": "Wave 5 should have removed all conversational sign-offs"
+        },
+        {
+          "name": "sentence_case_headings",
+          "type": "content",
+          "check": "headings_are_sentence_case",
+          "description": "Wave 4 should enforce sentence case headings"
+        },
+        {
+          "name": "no_additionally",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["additionally"],
+          "description": "Wave 1 should replace 'additionally' with 'also' or similar"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Run the doc-writer editing pipeline (--edit-only) on this technical explanation:\n\nValidator staking is a **multifaceted** process that plays a **pivotal** role in the security landscape of proof-of-stake networks. Essentially, validators embark on their journey by depositing tokens into a dedicated staking contract, which serves as a testament to their commitment to the network. This intricate interplay between economic incentives and consensus mechanisms fosters a vibrant, robust ecosystem -- one that not only ensures security but also promotes decentralization and long-term sustainability.",
+      "expected_output": "A clear, direct explanation of validator staking. Uses 'is' instead of 'serves as', no synonym cycling, no trailing -ing phrases, no filler words, no AI vocabulary.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["multifaceted", "pivotal", "landscape", "intricate", "interplay", "foster", "vibrant", "robust", "testament", "embark"],
+          "description": "Wave 1 should have removed all AI vocabulary"
+        },
+        {
+          "name": "no_copula_avoidance",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["serves as", "stands as", "acts as a testament"],
+          "description": "Wave 2 should replace indirect copulas with 'is'"
+        },
+        {
+          "name": "no_filler",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["essentially", "fundamentally", "basically"],
+          "description": "Wave 1 should drop filler words"
+        },
+        {
+          "name": "no_not_only_but_also",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["not only"],
+          "description": "Wave 2 should eliminate not-only-but-also constructions"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run the doc-writer editing pipeline (--edit-only) on this GitHub issue:\n\n## Critical Bug: Batch Builder Experiences Catastrophic Panic When Encountering Empty Transaction Lists -- Urgent Fix Required\n\nIt is important to note that the batch builder module -- which serves as the primary entry point for transaction processing -- encounters a catastrophic panic when it receives an empty transaction list. This crucial component has the ability to handle various transaction types, but in the event that it receives an empty list, it fails due to the fact that there is no bounds checking prior to the array access.\n\n### Challenges and Future Outlook\n\nThe future of batch processing looks incredibly promising, and this fix represents a major step in the right direction. Feel free to reach out if you have any questions!",
+      "expected_output": "A focused issue with plain language, specific about the panic condition, no inflated significance, no formulaic sections, no sign-offs, sentence case headings.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "no_ai_vocabulary",
+          "type": "content",
+          "check": "none_of_words_present",
+          "words": ["crucial", "catastrophic", "comprehensive", "robust"],
+          "description": "Wave 1 should have removed AI vocabulary"
+        },
+        {
+          "name": "no_filler_phrases",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["it is important to note", "has the ability to", "in the event that", "due to the fact that", "prior to"],
+          "description": "Wave 3 should have replaced all filler phrases"
+        },
+        {
+          "name": "no_generic_conclusion",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["the future", "looks incredibly promising", "step in the right direction", "feel free to"],
+          "description": "Waves 3 and 5 should have removed generic conclusions and sign-offs"
+        },
+        {
+          "name": "sentence_case_headings",
+          "type": "content",
+          "check": "headings_are_sentence_case",
+          "description": "Wave 4 should enforce sentence case headings"
+        },
+        {
+          "name": "no_copula_avoidance",
+          "type": "content",
+          "check": "none_of_phrases_present",
+          "phrases": ["serves as"],
+          "description": "Wave 2 should replace 'serves as' with 'is'"
+        },
+        {
+          "name": "em_dash_limit",
+          "type": "content",
+          "check": "max_occurrences",
+          "pattern": "\u2014",
+          "max": 1,
+          "description": "Wave 4 should limit em dashes"
+        }
+      ]
+    }
+  ]
+}
