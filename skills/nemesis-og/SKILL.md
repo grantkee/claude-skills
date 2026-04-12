@@ -1,5 +1,5 @@
 ---
-name: tn-nemesis
+name: nemesis-og
 description: "The Inescapable Auditor. Runs the full Feynman Auditor (Stage 1) and full State Inconsistency Auditor (Stage 2) as primary steps, then fuses their outputs in a feedback loop (Stage 3) to find bugs at the intersection that neither alone would catch. Language-agnostic. Triggers on /nemesis or nemesis audit."
 ---
 

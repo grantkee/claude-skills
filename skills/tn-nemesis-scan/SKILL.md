@@ -32,6 +32,12 @@ Target: [target files/directories]
 
 References are at: [absolute path to skills/tn-nemesis-scan/references/]
 
+All agents MUST read core-rules.md and language-adaptation.md.
+Additionally, load domain-specific references based on the target scope:
+- If target includes epoch boundaries, system calls, validator lifecycle, ConsensusRegistry, or StakeManager → also read references/protocol-contract-patterns.md
+- If target includes consensus state, DAG, certificates, aggregators, state sync, or network/peer management → also read references/consensus-dag-patterns.md
+- If target includes token accounting, staking rewards, or DeFi-style coupled state → also read references/defi-patterns.md
+
 Execute all 8 phases in order:
 - Phase 0+1 (parallel): nemesis-recon + nemesis-mapper
 - Phase 2: nemesis-feynman (full mode)
