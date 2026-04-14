@@ -1,6 +1,6 @@
 # Claude Skills
 
-Consolidated Claude Code skills and agents synced across devices.
+Consolidated Claude Code skills (24) and agents (41) synced across devices.
 
 ## Setup
 
@@ -73,13 +73,17 @@ Skills are invoked with `/skill-name` and provide domain-specific capabilities.
 - `tn-review`: Code review and security analysis for telcoin-network Rust code across consensus, execution, and networking layers.
 - `tn-review-contracts`: Code review and security analysis for tn-contracts Solidity code, focusing on access control and invariant compliance.
 - `tn-harden`: Automated hardening sweeps that find non-determinism, panic vectors, missing observability, and async-blocking hazards.
-- `tn-nemesis`: Deep-logic security audit combining first-principles questioning with state inconsistency analysis for maximum business-logic coverage.
 - `tn-threat-model`: Generates structured threat model documentation for audit preparation and attack surface analysis.
 - `feynman-auditor`: Deep business logic bug finder using the Feynman technique. Language-agnostic — questions every line, ordering choice, and implicit assumption.
 - `state-inconsistency-auditor`: Finds state inconsistency bugs where an operation mutates one piece of coupled state without updating its dependent counterpart.
+- `nemesis-scan`: Deep combined Feynman + State Inconsistency audit with dynamic domain discovery across 8 phases. Language-agnostic. Spawns nemesis-orchestrator.
+- `tn-nemesis-scan`: Telcoin-network variant of nemesis-scan with protocol-specific domain patterns.
+- `nemesis-og`: Original nemesis — iterative Feynman + State Inconsistency feedback loop until convergence.
+- `solidity-security-scan`: One-command orchestrator spawning 3-4 Solidity agents in parallel (sentinel, nemesis, gas-architect, optionally deploy-auditor).
 
 ### Documentation and writing
 
+- `doc-writer`: Sequential editing pipeline for technical documentation. Decomposes prose rules into focused single-pass agents.
 - `tn-write-crate-doc`: Generates crate-level rustdoc documentation for telcoin-network crates.
 - `human-writing`: Style guide that keeps prose clear and natural. Applied automatically when writing markdown, issues, PR descriptions, or documentation.
 - `gh-issue`: Produces a focused GitHub issue and a PR comment summarizing all changes on a branch.
@@ -89,7 +93,10 @@ Skills are invoked with `/skill-name` and provide domain-specific capabilities.
 
 - `skill-creator`: Builds new skills from scratch, modifies existing ones, and runs evals to measure performance.
 - `create-agent`: Interactive consultant that guides you through designing new Claude Code agent definitions.
-- `update-config`: Configures Claude Code settings.json, including hooks for automated behaviors.
+
+### Internal
+
+- `tn-rust-skills`: Reference skill containing telcoin-network Rust coding conventions and project context. Loaded by tn-* agents automatically — not user-invocable.
 
 ## Agents
 
@@ -102,6 +109,7 @@ Agents are autonomous workers spawned by the orchestration system. They run in i
 - `tn-debug-orchestrator`: Triages error output, stack traces, and test failures, then routes them to the right diagnostic skill.
 - `findings-verifier`: Composable verification pipeline for code review and security findings. Shared backend for tn-review, tn-security-eval, and tn-pr-reviewer.
 - `tn-pr-reviewer`: Standalone PR review orchestrator. Combined code review + security evaluation for any PR checkout.
+- `format-output`: Applies file-specific formatting rules to prose output. Spawned by the human-writing skill after writing or editing prose files.
 
 ### Implementation
 
@@ -110,6 +118,15 @@ Agents are autonomous workers spawned by the orchestration system. They run in i
 - `tn-write-proptest-agent`: Generates property-based tests after implementation is complete.
 - `tn-write-docs-agent`: Produces crate documentation after implementation and testing are done.
 - `tn-review-agent`: Final validation step that reviews all changes before presenting results.
+
+### tn-rust-engineer subagents
+
+Internal agents spawned by the `tn-rust-engineer` skill pipeline. Not spawned independently.
+
+- `tn-task-analyzer`: Phase 1 — analyzes task scope, affected layers, and existing patterns.
+- `tn-impl-planner`: Phase 2 — plans implementation strategy with crate ordering and type placement.
+- `tn-verifier`: Phase 4 — verifies correctness via cargo check, fmt, clippy, and nextest scoped to changed crates.
+- `tn-debugger`: Classifies verification failures and routes to debug-orchestrator for diagnosis.
 
 ### Security evaluation
 
@@ -125,20 +142,40 @@ These agents run in parallel during a `/tn-security-eval` pass. Each covers a sp
 - `tn-dread-evaluator`: Attacker-perspective risk assessment using the DREAD framework. Quantitative risk scoring.
 - `tn-stride-threat-model`: STRIDE threat classification (Spoofing, Tampering, Repudiation, Information Disclosure, DoS, Elevation of Privilege).
 
-### Solidity Analysis
+### Nemesis orchestration
+
+These agents form the `/nemesis-scan` pipeline. Spawned by `nemesis-orchestrator` — not used independently.
+
+- `nemesis-orchestrator`: Coordinates the full nemesis workflow across all phases, from domain discovery through reporting.
+- `nemesis-strategy`: Phase -1a — produces a structured research plan with 3-8 topics for domain discovery.
+- `nemesis-researcher`: Phase -1b — investigates a single research topic and produces domain-pattern fragments.
+- `nemesis-recon`: Phase 0 — attacker reconnaissance identifying value stores, complex paths, and coupled value hypotheses.
+- `nemesis-mapper`: Phase 1 — builds the Function-State Matrix, Coupled State Dependency Map, and unified Nemesis Map.
+- `nemesis-feynman`: Phase 2 — full Feynman interrogation using 7 question categories on every function in priority order.
+- `nemesis-state-check`: Phase 3 — state inconsistency analysis enriched by Feynman findings.
+- `nemesis-verifier`: Phase 6 — verifies CRITICAL, HIGH, and MEDIUM findings through deep code tracing.
+- `nemesis-journey`: Phase 5 — traces multi-transaction adversarial sequences that chain state gaps with ordering concerns.
+- `nemesis-reporter`: Phase 7 — generates the final verified report from all phase artifacts.
+
+### Solidity analysis
 
 - `solidity-sentinel`: Exhaustive Solidity static analysis combining manual expert review, aderyn, and slither. Three independent tracks each verify findings before consolidation into a single report.
 - `solidity-invariant-auditor`: Extracts business logic from Solidity contracts and formalizes into mathematical invariant properties with Foundry test implementations.
 - `solidity-gas-architect`: Analyzes Solidity contracts for gas optimization opportunities, generates refactored diffs with estimated savings, then spawns the scrutineer to validate safety.
 - `tn-solidity-change-scrutineer`: Validates proposed Solidity refactoring changes for storage layout safety, permission drift, shadowing, complexity spikes, and compiler version issues.
 - `solidity-nemesis`: Adversarial exploit hypothesis agent that constructs profitable multi-step attack paths from an attacker's perspective. Chains vulnerabilities into quantified exploit hypotheses with economics and risk tables. Spawns invariant-auditor for formal property extraction, then identifies which invariants an attacker can profitably violate.
+- `tn-foundry-invariant-architect`: Receives formalized invariant properties from solidity-invariant-auditor and produces compilable Foundry invariant tests with Handler contracts and ghost variables.
+- `tn-solidity-deploy-auditor`: Evaluates Foundry deployment scripts for security vulnerabilities — transaction ordering, key management, proxy initialization atomicity, and front-running risks.
 
 ## Directory structure
 
 ```
-claude-skills/
-├── skills/          # synced skills (one subdirectory per skill)
-├── agents/          # synced agents (one .md file per agent)
+claude-extensions-personal/
+├── skills/          # 24 synced skills
+├── agents/          # 41 synced agents
+├── .claude/         # Claude Code config & project context
 ├── Makefile         # sync tooling
+├── CLAUDE.md        # workflow orchestration rules
+├── LICENSE          # MIT
 └── README.md
 ```
