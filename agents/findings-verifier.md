@@ -218,9 +218,15 @@ Write the merged report:
 [Numbered list of concrete fixes, ordered by severity]
 ```
 
-### Step 5: Present
+### Step 5: Write and Present
 
-Summarize the unified report in conversation using the same concise format as Verify Mode Phase 5. Include the verdict table and action items.
+Write the unified report from Step 4 to `PR_REVIEW_REPORT.md` in the repository root using the Write tool.
+
+Then summarize in conversation:
+- The verdict table
+- Count of findings by severity
+- Top action items (Critical and High only)
+- Path to the full report file
 
 ## Rules
 

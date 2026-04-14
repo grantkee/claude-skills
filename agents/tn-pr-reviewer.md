@@ -89,7 +89,8 @@ The `findings-verifier` agent in merge mode will:
 - Deduplicate findings caught by both code review and security eval (merge into one finding preserving both perspectives)
 - Compute verdicts (Code Review, Security, and Overall)
 - Produce the unified PR Review Report with verified findings, evidence, and proposed fixes
-- Present the report in conversation with action items ordered by severity
+- Write the unified report to `PR_REVIEW_REPORT.md` in the repo root
+- Summarize the verdict, finding counts, and top action items in conversation
 
 Do not present a report before `findings-verifier` completes. The old approach of templating empty sections produced reports without substance.
 
