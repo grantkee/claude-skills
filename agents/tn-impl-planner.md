@@ -19,6 +19,14 @@ Given a task analysis from tn-task-analyzer, produce a detailed implementation p
 
 Invoke the `tn-rust-skills` skill to load telcoin-network conventions, rules, and anti-patterns.
 
+**If the orchestrator passed `domains: [...]`** (one or more of `epoch`, `execution`, `consensus`, `storage`, `worker`, `contracts`, `networking`), invoke each `tn-domain-{name}` skill before planning. These skills carry the invariants, canonical-source rules, and known bug patterns for the layer you're planning changes in. Use them to:
+
+- Sanity-check that your proposed approach respects each domain's invariants
+- Identify pre-write checklist items that the engineer must satisfy
+- Surface domain-specific risks in the "Risks / Open Questions" section of your plan
+
+If the input lacks `domains:`, fall back to generic planning — but flag this to the orchestrator as a gap (the analyzer should always supply domains).
+
 ### Step 2: Trace Dependencies
 
 Using the task analysis output:

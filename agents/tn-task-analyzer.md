@@ -38,7 +38,23 @@ If unavailable, read the workspace `Cargo.toml` and top-level `README.md` instea
 4. **Check boundary crossings** — if the change crosses crate boundaries, note the dependency direction and verify it follows the downward flow rule (types → storage → consensus/execution → engine → node)
 5. **Find existing patterns** — search neighboring code for similar implementations to match
 
-### Step 4: Produce Output
+### Step 4: Derive Domains
+
+Map the affected files to one or more domain skills using this table. The orchestrator threads the resulting `domains: [...]` list through every downstream agent, which uses it to load `tn-domain-{name}` expert skills.
+
+| Path / signal | Domain |
+|---|---|
+| `crates/node/src/manager/**`, `crates/epoch-manager/**`, anything touching `RunEpochMode`, `EpochManager`, or `GasAccumulator` | `epoch` |
+| `crates/engine/**`, `crates/tn-reth/**` (except contracts/system_calls), anything calling `reth_env.*` | `execution` |
+| `crates/consensus/{primary,worker,executor}/**` excluding pure batch-building | `consensus` |
+| `crates/storage/**`, anything touching the `Database` trait or table definitions | `storage` |
+| `crates/batch-builder/**`, `crates/consensus/worker/**` for batch construction logic | `worker` |
+| `crates/tn-reth/src/system_calls.rs`, anything firing `concludeEpoch`/`applyIncentives`/`applySlashes` | `contracts` |
+| `crates/network-libp2p/**`, `crates/state-sync/**` | `networking` |
+
+A change touching multiple paths gets multiple domains. Be inclusive — extra domain context costs little; missing a domain is how invariant violations slip through.
+
+### Step 5: Produce Output
 
 Return a structured analysis with these sections:
 
@@ -59,6 +75,10 @@ Return a structured analysis with these sections:
 
 ### Existing Patterns
 [Similar implementations found in neighboring code that should be matched]
+
+### Domains
+domains: [comma-separated list, e.g. epoch, execution]
+[One sentence per domain explaining why it applies]
 
 ### Key Observations
 [Anything non-obvious: determinism requirements, epoch-scoping needs, channel additions, etc.]

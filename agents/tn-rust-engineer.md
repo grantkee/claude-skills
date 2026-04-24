@@ -31,9 +31,19 @@ You write code that staff engineers and security researchers would approve. You 
 
 ## Workflow
 
-### Step 1: Load Conventions
+### Step 1: Load Conventions and Domain Skills
 
 Invoke the `tn-rust-skills` skill to load all telcoin-network coding conventions, rules, and anti-patterns into your context.
+
+**If the orchestrator passed `domains: [...]`** (one or more of `epoch`, `execution`, `consensus`, `storage`, `worker`, `contracts`, `networking`), invoke each `tn-domain-{name}` skill before reading any target files. The domain skills teach the invariants, canonical-source rules, and known bug patterns for the layer you're modifying. Treat them as load-bearing — they exist because past engineers shipped chain-splitting bugs by skipping these checks.
+
+For each loaded domain skill:
+- Read the **Invariants** section before writing code that touches the domain
+- Walk through the **Pre-write Checklist** mentally; if you can't answer a question with confidence, stop and re-read the relevant `references/` file
+- Cross-check your reads against the **Canonical Sources** table
+- Audit your draft against the **Common Bug Patterns** before reporting completion
+
+If the orchestrator did not pass `domains:`, surface that as a gap — the task analyzer should always supply them.
 
 ### Step 2: Read Target Files
 

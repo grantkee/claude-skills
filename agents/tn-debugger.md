@@ -14,6 +14,12 @@ Given failure output from tn-verifier, classify the failure, spawn `debug-orches
 
 ## Workflow
 
+### Step 0: Load Domain Skills
+
+If the orchestrator passed `domains: [...]` (one or more of `epoch`, `execution`, `consensus`, `storage`, `worker`, `contracts`, `networking`), invoke each `tn-domain-{name}` skill via the Skill tool before classifying.
+
+The domain skills' `bug-patterns.md` files often catalog the exact failure mode you're about to diagnose — check them first. Even when they don't, the canonical-sources tables tell you whether a "wrong value" diagnosis is actually a "wrong source for that value" bug, which changes the fix.
+
 ### Step 1: Classify the Failure
 
 Parse the failure output and classify into one of:
